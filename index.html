@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ヤマカガシ峠 - ローグライクRPG</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 上部ステータスバー -->
+    <header id="topbar">
+      <div class="stat-group">
+        <span class="floor-name">ヤマカガシ峠</span>
+        <span id="hud-floor" class="floor-num">1F</span>
+      </div>
+      <div class="stat-group">
+        <span class="label">HP</span>
+        <span id="hud-hp" class="value">35/35</span>
+        <div class="bar"><div id="hud-hp-bar" class="bar-fill hp"></div></div>
+      </div>
+      <div class="stat-group">
+        <span class="label">満腹度</span>
+        <span id="hud-hunger" class="value">100/100</span>
+        <div class="bar"><div id="hud-hunger-bar" class="bar-fill hunger"></div></div>
+      </div>
+      <div class="stat-group small">
+        <span class="label">Lv</span><span id="hud-level" class="value">1</span>
+      </div>
+      <div class="stat-group small">
+        <span class="label">ちから</span><span id="hud-str" class="value">8/8</span>
+      </div>
+      <div class="stat-group small">
+        <span class="label">💰</span><span id="hud-gold" class="value">0</span>
+      </div>
+    </header>
+
+    <!-- メイン領域 -->
+    <main id="main">
+      <div id="canvas-wrap">
+        <canvas id="game"></canvas>
+
+        <!-- メッセージログ（画面下に重ねる） -->
+        <div id="log"></div>
+
+        <!-- 持ち物メニュー -->
+        <div id="inventory" class="hidden">
+          <div class="inv-header">もちもの <span class="inv-hint">↑↓:選択　Enter:使う/装備　t:置く　i:閉じる</span></div>
+          <div id="inv-list"></div>
+        </div>
+
+        <!-- ゲームオーバー/クリア -->
+        <div id="overlay" class="hidden">
+          <h1 id="overlay-title">GAME OVER</h1>
+          <p id="overlay-sub"></p>
+          <p class="overlay-restart">Enter / タップで もう一度</p>
+        </div>
+      </div>
+
+      <!-- 右サイド情報 -->
+      <aside id="sidebar">
+        <div class="side-block">
+          <div class="side-title">ターン</div>
+          <div id="hud-turn" class="side-value">0</div>
+        </div>
+        <div class="side-block">
+          <div class="side-title">プレイ時間</div>
+          <div id="hud-time" class="side-value">0:00:00</div>
+        </div>
+        <div class="side-block">
+          <div class="side-title">次のLvまで</div>
+          <div id="hud-exp" class="side-value">5</div>
+        </div>
+        <div class="side-block">
+          <div class="side-title">武器</div>
+          <div id="hud-weapon" class="side-value small-text">こん棒</div>
+        </div>
+        <div class="side-block">
+          <div class="side-title">盾</div>
+          <div id="hud-shield" class="side-value small-text">木の盾</div>
+        </div>
+        <div class="side-block minimap-block">
+          <div class="side-title">マップ</div>
+          <canvas id="minimap" width="180" height="135"></canvas>
+        </div>
+      </aside>
+    </main>
+
+    <!-- スマホ用操作パッド -->
+    <footer id="controls">
+      <div class="dpad">
+        <button data-dir="-1,-1" class="diag">↖</button>
+        <button data-dir="0,-1">↑</button>
+        <button data-dir="1,-1" class="diag">↗</button>
+        <button data-dir="-1,0">←</button>
+        <button id="btn-wait" class="center">●</button>
+        <button data-dir="1,0">→</button>
+        <button data-dir="-1,1" class="diag">↙</button>
+        <button data-dir="0,1">↓</button>
+        <button data-dir="1,1" class="diag">↘</button>
+      </div>
+      <div class="actions">
+        <button id="btn-stairs">階段</button>
+        <button id="btn-inv">もちもの</button>
+      </div>
+    </footer>
+
+    <!-- 操作ヘルプ -->
+    <div id="help">
+      <strong>操作:</strong> 移動=矢印/WASD/テンキー(斜め可) ・ 足踏み=. ・ 階段=Enter ・ もちもの=i
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
