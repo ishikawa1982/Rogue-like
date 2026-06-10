@@ -1,7 +1,9 @@
 // =============================================================
-// sprites.js - ドット絵スプライト（16x16ピクセルマップ）
-//   スーファミ風のドット絵をコード内で定義し、オフスクリーン
-//   キャンバスに描画してキャッシュする。MOTHER2風の世界観。
+// sprites.js - ドット絵スプライト
+//   コード内のピクセルマップからオフスクリーンcanvasを生成しキャッシュ。
+//   キャラは32x32（w/h指定）でMOTHER2/EarthBound風。outline:true で
+//   塗りの周囲に自動でアウトラインを描き、陰影付きの高精細な見た目にする。
+//   アイテム/タイルは16x16（既定サイズ）。
 // =============================================================
 
 // ---- 色ユーティリティ ----
@@ -18,208 +20,361 @@ function darken(hex, f = 0.65) {
 export const SPRITE_DEFS = {
   // ===== プレイヤー：赤い帽子の少年 =====
   player: {
-    palette: { c: '#e84030', C: '#b02820', s: '#f8c896', e: '#202020', b: '#3858d8', d: '#283068', k: '#503020' },
+    w: 32, h: 32, outline: true,
+    palette: { r: '#e8463a', R: '#c22a1f', D: '#6e1d14', s: '#f7c89a', S: '#e0a877', e: '#22202a', m: '#b05a44', b: '#2f6fd8', B: '#2050a8', y: '#ffd24a', p: '#26305f', k: '#d83a3a', w: '#f4f4f4' },
     rows: [
-      '................',
-      '.....cccccc.....',
-      '....cccccccc....',
-      '...cccccccccc...',
-      '..CCCCCCCCCCCC..',
-      '....ssssssss....',
-      '....sessssse....',
-      '....ssssssss....',
-      '.....ssssss.....',
-      '....bbbbbbbb....',
-      '...bbbbbbbbbb...',
-      '...sbbbbbbbbs...',
-      '....dddddddd....',
-      '....dd....dd....',
-      '....ss....ss....',
-      '....kk....kk....',
+      '................................',
+      '...........rrrrrrrrrr...........',
+      '.........rrrrrrrrrrrrrr.........',
+      '........rrrrrrrrrrrrrrrr........',
+      '.......rrrrrrrrrrrrrrrrrr.......',
+      '.......rRRRRRRRRRRRRRRRRr.......',
+      '.......RRRRRRRRRRRRRRRRRR.......',
+      '........ssssssssssssssssDDDD....',
+      '........ssssssssssssssss........',
+      '........ssseesssssseesss........',
+      '........ssseesssssseesss........',
+      '........ssssssssssssssss........',
+      '........ssssssmmmmssssss........',
+      '........ssssssssssssssss........',
+      '........sSssssssssssssSs........',
+      '.........ssssssssssssss.........',
+      '..........ssssssssssss..........',
+      '......bbbbbbbbbbbbbbbbbbbb......',
+      '......byyyyyyyyyyyyyyyyyyb......',
+      '......bbbbbbbbbbbbbbbbbbbb......',
+      '......byyyyyyyyyyyyyyyyyyb......',
+      '......bbbbbbbbbbbbbbbbbbbb......',
+      '......ByyyyyyyyyyyyyyyyyyB......',
+      '.......BBBBBBBBBBBBBBBBBB.......',
+      '.......ssBBBBBBBBBBBBBBss.......',
+      '........pppppppppppppppp........',
+      '........pppppppppppppppp........',
+      '........pppppp....pppppp........',
+      '........ssssss....ssssss........',
+      '........ssssss....ssssss........',
+      '........kkkkkk....kkkkkk........',
+      '........wwwwww....wwwwww........',
     ],
   },
 
   // ===== うろつきキノコ =====
   kinoko: {
-    palette: { m: '#e85048', w: '#ffffff', M: '#a83028', t: '#f0d8b0', e: '#303030', T: '#c8a878' },
+    w: 32, h: 32, outline: true,
+    palette: { m: '#e8504a', M: '#b8332c', w: '#fdeaea', t: '#efd9b0', T: '#c9a877', e: '#2a2530', k: '#7a3a34', f: '#d8b888', F: '#b89460' },
     rows: [
-      '................',
-      '.....mmmmmm.....',
-      '...mmmmmmmmmm...',
-      '..mmwwmmmmwwmm..',
-      '..mmwwmmmmwwmm..',
-      '..mmmmmmmmmmmm..',
-      '...MMMMMMMMMM...',
-      '....tttttttt....',
-      '....tettttet....',
-      '....tttttttt....',
-      '.....tttttt.....',
-      '.....tttttt.....',
-      '....tttttttt....',
-      '....tt....tt....',
-      '....TT....TT....',
-      '................',
+      '................................',
+      '...........mmmmmmmmmm...........',
+      '........mmmmmmmmmmmmmmmm........',
+      '......mmmmmmmmmmmmmmmmmmmm......',
+      '.....mmmmmmmmmmmmmmmmmmmmmm.....',
+      '....mmmmmmmmmmmmmmmmmmmmmmmm....',
+      '....mmmmwwwmmmmmmmwwwmmmmmmm....',
+      '...mmmmmmmmmmmmmmmmmmmmmmmmmm...',
+      '...mmmmwwwwmmmmmmmmmwwwwmmmmm...',
+      '...mmmmmmmmmmmmmmmmmmmmmmmmmm...',
+      '....MMMMMMMMMMMMMMMMMMMMMMMM....',
+      '.....MMMMMMMMMMMMMMMMMMMMMM.....',
+      '........kkkkkkkkkkkkkkkk........',
+      '..........tttttttttttt..........',
+      '..........tteetttteett..........',
+      '..........tteetttteett..........',
+      '..........tttttttttttt..........',
+      '..........ttttmmmmtttt..........',
+      '.........tttttttttttttt.........',
+      '.........tttttttttttttt.........',
+      '.........tTttttttttttTt.........',
+      '.........tttttttttttttt.........',
+      '..........tttttttttttt..........',
+      '..........tttttttttttt..........',
+      '..........tTTTTTTTTTTt..........',
+      '...........tttttttttt...........',
+      '...........ffff..ffff...........',
+      '...........ffff..ffff...........',
+      '...........FFFF..FFFF...........',
+      '................................',
+      '................................',
+      '................................',
     ],
   },
 
   // ===== ゼリーくん =====
   jelly: {
-    palette: { g: '#48c8b0', G: '#2f9a86', e: '#202020', m: '#0d6b5b', w: '#b8f0e4' },
+    w: 32, h: 32, outline: true,
+    palette: { g: '#46c8b2', G: '#2f9a86', d: '#1f7a68', w: '#c8f4ea', E: '#15201e', m: '#0d4f44' },
     rows: [
-      '................',
-      '................',
-      '......gggg......',
-      '....gggggggg....',
-      '...gwwggggggg...',
-      '..gwwggggggggg..',
-      '..ggeggggggegg..',
-      '..gggggggggggg..',
-      '..gggmmmmmmggg..',
-      '.gggggggggggggg.',
-      '.gggggggggggggg.',
-      '.GGGGGGGGGGGGGG.',
-      '..GG.GGGGGG.GG..',
-      '................',
-      '................',
-      '................',
+      '................................',
+      '................................',
+      '............gggggggg............',
+      '.........gggggggggggggg.........',
+      '.......gggggggggggggggggg.......',
+      '......gggggggggggggggggggg......',
+      '.....wwgggggggggggggggggggg.....',
+      '.....wggggggggggggggggggggg.....',
+      '....gggggggggggggggggggggggg....',
+      '....gggggEEggggggggggEEggggg....',
+      '....gggggEEggggggggggEEggggg....',
+      '....gggggggggggggggggggggggg....',
+      '....ggggggggmmmmmmmmgggggggg....',
+      '....gggggggggggggggggggggggg....',
+      '...gggggggggggggggggggggggggg...',
+      '...gggggggggggggggggggggggggg...',
+      '...gggggggggggggggggggggggggg...',
+      '...dggggggggggggggggggggggggd...',
+      '...gggggggggggggggggggggggggg...',
+      '....gggggggggggggggggggggggg....',
+      '....GGGGGGGGGGGGGGGGGGGGGGGG....',
+      '.....GGGGGGGGGGGGGGGGGGGGGG.....',
+      '......dddddddddddddddddddd......',
+      '.......gggggggggggggggggg.......',
+      '........gggggggggggggggg........',
+      '...........gggg..gggg...........',
+      '...........GGGG..GGGG...........',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
     ],
   },
 
   // ===== いたずらガラス =====
   crow: {
-    palette: { k: '#383848', E: '#f0f0f0', y: '#f0a020', f: '#c07818' },
+    w: 32, h: 32, outline: true,
+    palette: { k: '#3a3a4c', K: '#26263a', E: '#f4f4f4', P: '#15151e', y: '#f0a838', f: '#c07820' },
     rows: [
-      '................',
-      '......kkk.......',
-      '.....kkkkk......',
-      '.....kEkkk......',
-      '.....kkkkyy.....',
-      '....kkkkkk......',
-      '...kkkkkkkk.....',
-      '..kkkkkkkkkk....',
-      '..kkkkkkkkkkk...',
-      '...kkkkkkkkkk...',
-      '....kkkkkkkkk...',
-      '.....kkkkkkk....',
-      '......kkkk......',
-      '.....ff..ff.....',
-      '................',
-      '................',
+      '................................',
+      '................................',
+      '.............kkkkkk.............',
+      '...........kkkkkkkkkk...........',
+      '..........kkkkkkkkkkkk..........',
+      '..........kkkEEkkkkkk...........',
+      '..........kkkEPkkkkkyyyy........',
+      '..........kkkkkkkkkkyyy.........',
+      '.........kkkkkkkkkkkk...........',
+      '........kkkkkkkkkkkkkk..........',
+      '.......kkkkkkkkkkkkkkkk.........',
+      '......kkkkkkkkkkkkkkkkkk........',
+      '......kkkkkkkkkkkkkkkkkk........',
+      '.....kkkkkkkkkkkkkkkkkkkk.......',
+      '.....kkkkkkkkkkkkkkkkkkkk.......',
+      '.....KKKKkkkkkkkkkkkkKKKK.......',
+      '......KKKkkkkkkkkkkkkKKK........',
+      '.......kkkkkkkkkkkkkkkk.........',
+      '........kkkkkkkkkkkkkk..........',
+      '.........kkkkkkkkkkkk...........',
+      '..........kkkkkkkkkk............',
+      '...........kkkkkkkk.............',
+      '............kkkkkk..............',
+      '...........ff....ff.............',
+      '...........ff....ff.............',
+      '..........fff....fff............',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
     ],
   },
 
   // ===== みならいコック =====
   cook: {
-    palette: { w: '#f8f8f8', W: '#d0d0d8', s: '#f8c896', e: '#202020', m: '#c05030', d: '#404060', k: '#202030' },
+    w: 32, h: 32, outline: true,
+    palette: { w: '#f8f8f8', W: '#d2d2dc', s: '#f7c89a', S: '#e0a877', e: '#2a2530', m: '#b05a44', d: '#3a3a52', k: '#202030', a: '#e8e8ee', P: '#9aa0ac' },
     rows: [
-      '.....wwwwww.....',
-      '....wwwwwwww....',
-      '....wwwwwwww....',
-      '.....WWWWWW.....',
-      '....ssssssss....',
-      '....sessssse....',
-      '....ssssssss....',
-      '.....ssmmss.....',
-      '....wwwwwwww....',
-      '...wwwwwwwwww...',
-      '...swwwwwwwws...',
-      '....wwwwwwww....',
-      '....dd....dd....',
-      '....dd....dd....',
-      '....kk....kk....',
-      '................',
+      '................................',
+      '..........wwwwwwwwwwww..........',
+      '........wwwwwwwwwwwwwwww........',
+      '.......wwwwwwwwwwwwwwwwww.......',
+      '.......wwwwwwwwwwwwwwwwww.......',
+      '........wwwwwwwwwwwwwwww........',
+      '.........WWWWWWWWWWWWWW.........',
+      '..........ssssssssssss..........',
+      '..........sseesssseess..........',
+      '..........sseesssseess..........',
+      '..........ssssssssssss..........',
+      '..........sssssmmsssss..........',
+      '...........ssssssssss...........',
+      '.........aaaaaaaaaaaaaa.........',
+      '........aaaaaaaaaaaaaaaa........',
+      '........aaaaaaaaaaaaaaaa........',
+      '........aaaaPPPPPPPPaaaa........',
+      '........aaaaPPPPPPPPaaaa........',
+      '........aaaaPPPPPPPPaaaa........',
+      '........saaaaaaaaaaaaaas........',
+      '.......sssaaaaaaaaaaaasss.......',
+      '.......ss.aaaaaaaaaaaa.ss.......',
+      '..........aaaaaaaaaaaa..........',
+      '..........dddddddddddd..........',
+      '..........dddddddddddd..........',
+      '..........dddd..dddd............',
+      '..........dddd..dddd............',
+      '..........kkkk..kkkk............',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
     ],
   },
 
   // ===== ツッパリこぞう =====
   punk: {
-    palette: { h: '#40c840', s: '#f8c896', e: '#202020', m: '#c05030', j: '#383850', d: '#603820', k: '#202020' },
+    w: 32, h: 32, outline: true,
+    palette: { h: '#48c848', H: '#2f9a2f', s: '#f7c89a', S: '#e0a877', e: '#2a2530', m: '#b05a44', j: '#3a3a52', J: '#262638', d: '#5a3420', k: '#202020' },
     rows: [
-      '.......hh.......',
-      '......hhhh......',
-      '......hhhh......',
-      '....ssssssss....',
-      '....sessssse....',
-      '....ssssssss....',
-      '.....ssmmss.....',
-      '....jjjjjjjj....',
-      '...jjjjjjjjjj...',
-      '...sjjjjjjjjs...',
-      '....jjjjjjjj....',
-      '....dd....dd....',
-      '....dd....dd....',
-      '....kk....kk....',
-      '................',
-      '................',
+      '................................',
+      '..............hhhh..............',
+      '............hhhhhhhh............',
+      '..........hhhhhhhhhhhh..........',
+      '.........hhhhhhhhhhhhhh.........',
+      '........hhhHHHhhhhHHHhhh........',
+      '........HHHsssssssssssH.........',
+      '..........ssssssssssss..........',
+      '..........sseesssseess..........',
+      '..........sseesssseess..........',
+      '..........ssssssssssss..........',
+      '..........sssmmmmmssss..........',
+      '...........ssssssssss...........',
+      '.........jjjjjjjjjjjjjj.........',
+      '........jjjjjjjjjjjjjjjj........',
+      '........jjjJJJJJJJJJJjjj........',
+      '........jjjJJJJJJJJJJjjj........',
+      '........sjjJJJJJJJJJJjjs........',
+      '.......sssjjjjjjjjjjjjsss.......',
+      '.......ss.jjjjjjjjjjjj.ss.......',
+      '..........jjjjjjjjjjjj..........',
+      '..........dddddddddddd..........',
+      '..........dddddddddddd..........',
+      '..........dddd..dddd............',
+      '..........dddd..dddd............',
+      '..........kkkk..kkkk............',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
     ],
   },
 
   // ===== うちゅうじんグレイ =====
   alien: {
-    palette: { a: '#c0d0d0', E: '#182860' },
+    w: 32, h: 32, outline: true,
+    palette: { a: '#c6d4d2', A: '#9aacaa', E: '#10204e', b: '#7f9b97' },
     rows: [
-      '................',
-      '.....aaaaaa.....',
-      '....aaaaaaaa....',
-      '...aaaaaaaaaa...',
-      '...aEEaaaaEEa...',
-      '...aEEaaaaEEa...',
-      '...aaaaaaaaaa...',
-      '....aaaaaaaa....',
-      '.....aaaaaa.....',
-      '......aaaa......',
-      '....aaaaaaaa....',
-      '...aaaaaaaaaa...',
-      '..aa.aaaaaa.aa..',
-      '.....aa..aa.....',
-      '....aaa..aaa....',
-      '................',
+      '................................',
+      '..........aaaaaaaaaaaa..........',
+      '........aaaaaaaaaaaaaaaa........',
+      '.......aaaaaaaaaaaaaaaaaa.......',
+      '......aaaaaaaaaaaaaaaaaaaa......',
+      '......aaaaaaaaaaaaaaaaaaaa......',
+      '......aaaEEEEaaaaaaEEEEaaa......',
+      '......aaEEEEEEaaaaEEEEEEaa......',
+      '......aaaEEEEaaaaaaEEEEaaa......',
+      '.......aaaaaaaaaaaaaaaaaa.......',
+      '........aaaaaaaaaaaaaaaa........',
+      '.........aaaaaaaaaaaaaa.........',
+      '..........AAAaaaaaaAAA..........',
+      '............aaaaaaaa............',
+      '...........aaaaaaaaaa...........',
+      '..........aaaaaaaaaaaa..........',
+      '.........aaaaaaaaaaaaaa.........',
+      '........baaaaaaaaaaaaaab........',
+      '.......baaaaaaaaaaaaaaaab.......',
+      '.......baaaaaaaaaaaaaaaab.......',
+      '........aaaaaaaaaaaaaaaa........',
+      '.........aaaaaaaaaaaaaa.........',
+      '..........aaaaaaaaaaaa..........',
+      '..........aaaaaaaaaaaa..........',
+      '..........aaaa..aaaa............',
+      '..........aaaa..aaaa............',
+      '..........AAAA..AAAA............',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
     ],
   },
 
   // ===== ガラクタロボ =====
   robot: {
-    palette: { m: '#a8b4c4', M: '#788494', E: '#e83020', G: '#ffd840', k: '#404858' },
+    w: 32, h: 32, outline: true,
+    palette: { m: '#aab6c6', M: '#7a8696', E: '#e83020', G: '#ffd840', k: '#3a4250', a: '#9aa6b6' },
     rows: [
-      '....mmmmmmmm....',
-      '....mEmmmmEm....',
-      '....mmmmmmmm....',
-      '....MMMMMMMM....',
-      '......kkkk......',
-      '..mmmmmmmmmmmm..',
-      '..mGGmmmmmmGGm..',
-      '..mmmmmmmmmmmm..',
-      '..MMMMMMMMMMMM..',
-      '..mm.mmmmmm.mm..',
-      '.....mm..mm.....',
-      '.....mm..mm.....',
-      '....MMM..MMM....',
-      '................',
-      '................',
-      '................',
+      '................................',
+      '...............k................',
+      '..............kkk...............',
+      '..............kGk...............',
+      '..........mmmmmmmmmmmm..........',
+      '..........mmmmmmmmmmmm..........',
+      '..........mEEmmmmmmEEm..........',
+      '..........mEEmmmmmmEEm..........',
+      '..........mmmmmmmmmmmm..........',
+      '..........mmmmkkkkmmmm..........',
+      '..........MMMMMMMMMMMM..........',
+      '........aa.mmmmmmmmmm.aa........',
+      '.......aaa.mmmmmmmmmm.aaa.......',
+      '.......aa..mGGmmmmGGm..aa.......',
+      '...........mmmmmmmmmm...........',
+      '..........mmmmmmmmmmmm..........',
+      '..........mmmGGGGGGmmm..........',
+      '..........mmmmmmmmmmmm..........',
+      '..........MMMMMMMMMMMM..........',
+      '..........mmmmmmmmmmmm..........',
+      '..........MMMMMMMMMMMM..........',
+      '..........mmmm..mmmm............',
+      '..........mmmm..mmmm............',
+      '..........MMMM..MMMM............',
+      '.........kkkkk..kkkkk...........',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
     ],
   },
 
   // ===== サイケなトカゲ =====
   lizard: {
-    palette: { g: '#58c858', G: '#3a9a3a', p: '#c050d0', E: '#ffe040', m: '#205820' },
+    w: 32, h: 32, outline: true,
+    palette: { g: '#5ac85a', G: '#3a9a3a', p: '#c050d0', P: '#9a3aa8', E: '#ffe040', e: '#202a20', m: '#1e4e1e' },
     rows: [
-      '.....pp..pp.....',
-      '.....gggggg.....',
-      '....gggggggg....',
-      '....gEggggEg....',
-      '....gggggggg....',
-      '.....gmmmmg.....',
-      '....gggggggg....',
-      '...gggggggggg...',
-      '..pggggggggggp..',
-      '..pggggggggggp..',
-      '...gggggggggg...',
-      '....gggggggg....',
-      '....gg.gg.gg....',
-      '....GG....GG....',
-      '................',
-      '................',
+      '................................',
+      '.........p..........p...........',
+      '........ppp........ppp..........',
+      '.........gggggggggggg...........',
+      '.......gggggggggggggggg.........',
+      '......gggggggggggggggggg........',
+      '......ggEEEgggggggEEEggg........',
+      '......ggEEEgggggggEEEggg........',
+      '......gggggggggggggggggg........',
+      '.......ggggmmmmmmmgggg..........',
+      '......gggggggggggggggggg........',
+      '.....gggggggggggggggggggg.......',
+      '....ggppgggggggggggggppgg.......',
+      '....ggPPgggggggggggggPPgg.......',
+      '....gggggggggggggggggggggg......',
+      '...ggppgggggggggggggggppgg......',
+      '...ggPPgggggggggggggggPPgg......',
+      '...gggggggggggggggggggggg.......',
+      '....gggggggggggggggggggg........',
+      '.....ggppggggggggggggpp.........',
+      '......gggggggggggggggg..........',
+      '.......gggggggggggggg...........',
+      '........gggggggggggg............',
+      '.........gggggggggg.............',
+      '.......gggg....gggg.............',
+      '......gggg......gggg............',
+      '......GGGG......GGGG............',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
+      '................................',
     ],
   },
 
@@ -431,11 +586,16 @@ export const SPRITE_DEFS = {
   },
 };
 
+// 各スプライトのサイズ（未指定は16x16）
+function defW(def) { return def.w || 16; }
+function defH(def) { return def.h || 16; }
+
 // ---- 定義の整合性チェック（読み込み時に検証） ----
 for (const [key, def] of Object.entries(SPRITE_DEFS)) {
-  if (def.rows.length !== 16) throw new Error(`sprite ${key}: rows=${def.rows.length}`);
+  const w = defW(def), h = defH(def);
+  if (def.rows.length !== h) throw new Error(`sprite ${key}: rows=${def.rows.length} expected ${h}`);
   def.rows.forEach((row, i) => {
-    if (row.length !== 16) throw new Error(`sprite ${key} row${i}: len=${row.length} "${row}"`);
+    if (row.length !== w) throw new Error(`sprite ${key} row${i}: len=${row.length} expected ${w} "${row}"`);
     for (const ch of row) {
       if (ch !== '.' && !(ch in def.palette)) throw new Error(`sprite ${key} row${i}: unknown char "${ch}"`);
     }
@@ -444,18 +604,18 @@ for (const [key, def] of Object.entries(SPRITE_DEFS)) {
 
 // ---- スプライト生成＆キャッシュ ----
 const spriteCache = new Map();
+const OUTLINE = '#1a1410'; // EarthBound風の濃い輪郭線
 
 // 歩行フレーム：脚（下部の列）の片側を1px持ち上げて「片足を上げた」絵を作る。
-// side='L' で左半分(列0-7)、'R' で右半分(列8-15)の脚を持ち上げる。
-const LEG_TOP = 12;
-function steppedRows(rows, side) {
+// side='L' で左半分、'R' で右半分の脚を持ち上げる。
+function steppedRows(rows, side, w, h) {
   const grid = rows.map(r => r.split(''));
-  const inSide = (x) => (side === 'L' ? x < 8 : x >= 8);
-  for (let x = 0; x < 16; x++) {
+  const legTop = h - 4;
+  const inSide = (x) => (side === 'L' ? x < w / 2 : x >= w / 2);
+  for (let x = 0; x < w; x++) {
     if (!inSide(x)) continue;
-    // 脚の領域だけ1px上へシフト（最下行は地面から離れて空白に）
-    for (let y = LEG_TOP; y < 16; y++) {
-      grid[y][x] = y + 1 < 16 ? rows[y + 1][x] : '.';
+    for (let y = legTop; y < h; y++) {
+      grid[y][x] = y + 1 < h ? rows[y + 1][x] : '.';
     }
   }
   return grid.map(r => r.join(''));
@@ -463,15 +623,38 @@ function steppedRows(rows, side) {
 
 function buildSprite(key, tint, frame) {
   const def = SPRITE_DEFS[key];
+  const w = defW(def), h = defH(def);
   let rows = def.rows;
-  if (frame === 1) rows = steppedRows(rows, 'L');
-  else if (frame === 2) rows = steppedRows(rows, 'R');
+  if (frame === 1) rows = steppedRows(rows, 'L', w, h);
+  else if (frame === 2) rows = steppedRows(rows, 'R', w, h);
+
+  // 塗りの有無マップ
+  const filled = (x, y) => x >= 0 && y >= 0 && x < w && y < h && rows[y][x] !== '.';
+
   const canvas = document.createElement('canvas');
-  canvas.width = 16;
-  canvas.height = 16;
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d');
-  for (let y = 0; y < 16; y++) {
-    for (let x = 0; x < 16; x++) {
+
+  // 1) 自動アウトライン（塗りの周囲1pxを濃色で囲う）
+  if (def.outline) {
+    ctx.fillStyle = def.outlineColor || OUTLINE;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (filled(x, y)) continue;
+        // 8近傍に塗りがあれば輪郭
+        let near = false;
+        for (let dy = -1; dy <= 1 && !near; dy++)
+          for (let dx = -1; dx <= 1; dx++)
+            if ((dx || dy) && filled(x + dx, y + dy)) { near = true; break; }
+        if (near) ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+
+  // 2) 本体の塗り
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
       const ch = rows[y][x];
       if (ch === '.') continue;
       let color = def.palette[ch];
