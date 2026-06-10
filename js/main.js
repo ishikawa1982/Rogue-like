@@ -141,6 +141,8 @@ function init() {
   window.addEventListener('resize', () => { renderer.resize(); draw(); });
   bindTouch();
   draw();
+  // デバッグ用フック（コンソールから状態を触れる）
+  window.__DEBUG = { get game() { return game; }, draw };
 }
 
 init();

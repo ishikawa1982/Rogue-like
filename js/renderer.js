@@ -1,9 +1,11 @@
 // =============================================================
-// renderer.js - Canvas描画（ダンジョン・エンティティ・ミニマップ）
+// renderer.js - Canvas描画（ドット絵スプライト・タイルテクスチャ）
+//   16x16のドット絵を2倍に拡大描画するスーファミ風レンダラー。
 // =============================================================
-import { TILE, ITEM_TYPE } from './data.js';
+import { TILE } from './data.js';
+import { getSprite, getItemSprite, getTileTexture, themeForFloor } from './sprites.js';
 
-export const TILE_SIZE = 36;
+export const TILE_SIZE = 32;
 
 export class Renderer {
   constructor(canvas, minimap) {
@@ -14,7 +16,6 @@ export class Renderer {
   }
 
   resize() {
-    // 親要素いっぱいに広げる
     const rect = this.canvas.parentElement.getBoundingClientRect();
     this.canvas.width = rect.width;
     this.canvas.height = rect.height;
@@ -25,8 +26,9 @@ export class Renderer {
     const d = game.dungeon;
     const W = this.canvas.width;
     const H = this.canvas.height;
+    ctx.imageSmoothingEnabled = false; // ドット絵をくっきり拡大
 
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = '#08080f';
     ctx.fillRect(0, 0, W, H);
 
     // プレイヤーを中心にしたカメラ
@@ -34,10 +36,14 @@ export class Renderer {
     const rows = Math.ceil(H / TILE_SIZE);
     let camX = game.player.x - Math.floor(cols / 2);
     let camY = game.player.y - Math.floor(rows / 2);
+    // 下端はログウィンドウぶん余裕を持たせる（マップ外は黒で見せる）
     camX = Math.max(0, Math.min(camX, d.w - cols));
-    camY = Math.max(0, Math.min(camY, d.h - rows));
+    camY = Math.max(0, Math.min(camY, d.h - rows + 4));
 
-    // タイル描画
+    const theme = themeForFloor(game.floor);
+    const bob = game.turn % 2; // ターンごとに1pxゆれる（生きてる感）
+
+    // ---- タイル描画 ----
     for (let sy = 0; sy < rows + 1; sy++) {
       for (let sx = 0; sx < cols + 1; sx++) {
         const mx = camX + sx;
@@ -46,110 +52,93 @@ export class Renderer {
         if (!game.explored[my][mx]) continue;
         const px = sx * TILE_SIZE;
         const py = sy * TILE_SIZE;
-        const vis = game.visible[my][mx];
-        this.drawTile(d.get(mx, my), px, py, vis);
+        const tile = d.get(mx, my);
+
+        let tex;
+        if (tile === TILE.WALL) {
+          // 下が歩ける場所なら「崖の壁面」、そうでなければ「岩の上面」
+          tex = d.isWalkable(mx, my + 1)
+            ? getTileTexture(theme, 'wallFace')
+            : getTileTexture(theme, 'wallTop');
+        } else if (tile === TILE.CORRIDOR) {
+          tex = getTileTexture(theme, 'corridor');
+        } else {
+          tex = getTileTexture(theme, 'floor');
+        }
+        ctx.drawImage(tex, px, py, TILE_SIZE, TILE_SIZE);
+
+        // 階段（穴＋はしご）
+        if (tile === TILE.STAIRS) {
+          ctx.drawImage(getSprite('stairs'), px, py, TILE_SIZE, TILE_SIZE);
+        }
+
+        // 探索済みだが今見えていない場所は暗く
+        if (!game.visible[my][mx]) {
+          ctx.fillStyle = 'rgba(4,4,20,0.55)';
+          ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+        }
       }
     }
 
-    // 床落ちアイテム
+    // ---- 床落ちアイテム ----
     for (const g of game.groundItems) {
       if (!game.visible[g.y] || !game.visible[g.y][g.x]) continue;
       const px = (g.x - camX) * TILE_SIZE;
       const py = (g.y - camY) * TILE_SIZE;
-      if (g.gold !== undefined) {
-        this.drawGlyph('$', '#ffd54f', px, py);
-      } else {
-        this.drawGlyph(g.item.glyph, g.item.color, px, py);
-      }
+      const spr = g.gold !== undefined ? getSprite('coin') : getItemSprite(g.item);
+      ctx.drawImage(spr, px, py, TILE_SIZE, TILE_SIZE);
     }
 
-    // 階段（可視時に強調）
-    if (game.visible[d.stairs.y] && game.visible[d.stairs.y][d.stairs.x]) {
-      const px = (d.stairs.x - camX) * TILE_SIZE;
-      const py = (d.stairs.y - camY) * TILE_SIZE;
-      this.drawGlyph('▼', '#ffffff', px, py);
-    }
-
-    // モンスター
+    // ---- モンスター ----
     for (const m of game.monsters) {
       if (!game.visible[m.y] || !game.visible[m.y][m.x]) continue;
       const px = (m.x - camX) * TILE_SIZE;
       const py = (m.y - camY) * TILE_SIZE;
-      this.drawCreature(m.glyph, m.color, px, py);
-      this.drawHpBar(px, py, m.hp / m.maxHp);
+      const yOff = (bob + m.x + m.y) % 2; // 個体ごとに位相をずらす
+      this.drawShadow(px, py);
+      this.drawSprite(getSprite(m.sprite || m.id), px, py - yOff, m.facing < 0);
+      if (m.hp < m.maxHp) this.drawHpBar(px, py, m.hp / m.maxHp);
     }
 
-    // プレイヤー
+    // ---- プレイヤー ----
     const ppx = (game.player.x - camX) * TILE_SIZE;
     const ppy = (game.player.y - camY) * TILE_SIZE;
-    this.drawCreature('@', '#ffeb3b', ppx, ppy, true);
+    this.drawShadow(ppx, ppy);
+    this.drawSprite(getSprite('player'), ppx, ppy - bob, game.player.facing < 0);
 
     this.renderMinimap(game);
   }
 
-  drawTile(tile, px, py, visible) {
+  drawSprite(spr, px, py, flip = false) {
     const ctx = this.ctx;
-    const s = TILE_SIZE;
-    let color;
-    switch (tile) {
-      case TILE.WALL:     color = visible ? '#3a3f4b' : '#1c1f26'; break;
-      case TILE.FLOOR:    color = visible ? '#5a6072' : '#2a2e38'; break;
-      case TILE.CORRIDOR: color = visible ? '#4a5060' : '#23272f'; break;
-      case TILE.STAIRS:   color = visible ? '#6b7385' : '#2a2e38'; break;
-      default:            color = '#000';
-    }
-    ctx.fillStyle = color;
-    ctx.fillRect(px, py, s, s);
-
-    if (tile === TILE.FLOOR || tile === TILE.CORRIDOR || tile === TILE.STAIRS) {
-      // グリッド線
-      ctx.strokeStyle = visible ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)';
-      ctx.strokeRect(px + 0.5, py + 0.5, s - 1, s - 1);
-    } else if (tile === TILE.WALL) {
-      ctx.fillStyle = visible ? 'rgba(255,255,255,0.04)' : 'transparent';
-      ctx.fillRect(px, py, s, 4);
+    if (flip) {
+      ctx.save();
+      ctx.translate(px + TILE_SIZE, py);
+      ctx.scale(-1, 1);
+      ctx.drawImage(spr, 0, 0, TILE_SIZE, TILE_SIZE);
+      ctx.restore();
+    } else {
+      ctx.drawImage(spr, px, py, TILE_SIZE, TILE_SIZE);
     }
   }
 
-  drawGlyph(ch, color, px, py) {
+  drawShadow(px, py) {
     const ctx = this.ctx;
-    ctx.font = `bold ${Math.floor(TILE_SIZE * 0.6)}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = color;
-    ctx.fillText(ch, px + TILE_SIZE / 2, py + TILE_SIZE / 2 + 2);
-  }
-
-  drawCreature(ch, color, px, py, isPlayer = false) {
-    const ctx = this.ctx;
-    const cx = px + TILE_SIZE / 2;
-    const cy = py + TILE_SIZE / 2;
-    const r = TILE_SIZE * 0.38;
-    // 体（円）
+    ctx.fillStyle = 'rgba(0,0,0,0.30)';
     ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = color;
+    ctx.ellipse(px + TILE_SIZE / 2, py + TILE_SIZE - 2, TILE_SIZE * 0.32, TILE_SIZE * 0.10, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = isPlayer ? '#fff' : 'rgba(0,0,0,0.5)';
-    ctx.stroke();
-    // 文字
-    ctx.font = `bold ${Math.floor(TILE_SIZE * 0.46)}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#10131a';
-    ctx.fillText(ch, cx, cy + 1);
   }
 
   drawHpBar(px, py, ratio) {
     const ctx = this.ctx;
     const w = TILE_SIZE * 0.8;
     const x = px + (TILE_SIZE - w) / 2;
-    const y = py + 3;
+    const y = py - 2;
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(x, y, w, 4);
+    ctx.fillRect(x, y, w, 3);
     ctx.fillStyle = ratio > 0.5 ? '#66bb6a' : ratio > 0.25 ? '#ffca28' : '#ef5350';
-    ctx.fillRect(x, y, w * Math.max(0, ratio), 4);
+    ctx.fillRect(x, y, w * Math.max(0, ratio), 3);
   }
 
   // -----------------------------------------------------------

@@ -3,6 +3,7 @@
 // =============================================================
 import { ITEM_TYPE } from './data.js';
 import { displayName } from './items.js';
+import { getItemSpriteURL } from './sprites.js';
 
 export class UI {
   constructor(game) {
@@ -59,7 +60,7 @@ export class UI {
   }
 
   renderLog() {
-    const recent = this.game.messages.slice(-6);
+    const recent = this.game.messages.slice(-4);
     this.el.log.innerHTML = recent
       .map((m, i) => `<div class="log-line${i === recent.length - 1 ? ' log-new' : ''}">${m}</div>`)
       .join('');
@@ -86,12 +87,12 @@ export class UI {
 
   typeLabel(item) {
     switch (item.type) {
-      case ITEM_TYPE.WEAPON: return '武器';
-      case ITEM_TYPE.SHIELD: return '盾';
-      case ITEM_TYPE.HERB:   return '草';
-      case ITEM_TYPE.SCROLL: return '巻物';
-      case ITEM_TYPE.FOOD:   return '食料';
-      case ITEM_TYPE.STAFF:  return '杖';
+      case ITEM_TYPE.WEAPON: return 'ぶき';
+      case ITEM_TYPE.SHIELD: return 'ぼうし';
+      case ITEM_TYPE.HERB:   return 'くすり';
+      case ITEM_TYPE.SCROLL: return 'メモ';
+      case ITEM_TYPE.FOOD:   return 'たべもの';
+      case ITEM_TYPE.STAFF:  return 'ステッキ';
       default: return '';
     }
   }
@@ -107,7 +108,7 @@ export class UI {
       const equipped = (g.player.weapon === item || g.player.shield === item) ? ' E' : '';
       const sel = i === this.invIndex ? ' selected' : '';
       return `<div class="inv-item${sel}">
-        <span class="inv-glyph" style="color:${item.color}">${item.glyph}</span>
+        <img class="inv-icon" src="${getItemSpriteURL(item)}" alt="">
         <span class="inv-type">${this.typeLabel(item)}</span>
         <span class="inv-name">${displayName(item)}<span class="inv-eq">${equipped}</span></span>
       </div>`;

@@ -8,7 +8,8 @@ export class Player {
   constructor(x, y) {
     this.x = x;
     this.y = y;
-    this.name = 'シレン';
+    this.name = 'ケン';
+    this.facing = 1;            // 1=右向き, -1=左向き（描画用）
     this.level = 1;
     this.exp = 0;
     const s = levelStats(1);
@@ -86,8 +87,9 @@ export class Monster {
     this.exp = def.exp;
     this.gold = def.gold;
     this.ai = def.ai;
-    this.glyph = def.glyph;
+    this.sprite = def.sprite;
     this.color = def.color;
+    this.facing = 1;
     this.special = def.special;
     this.asleep = false;     // 将来拡張用
   }

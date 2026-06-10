@@ -26,15 +26,15 @@ export class Game {
 
     this.player = new Player(0, 0);
     // 初期装備とアイテム
-    const club = createItem('kobou');
-    const woodShield = createItem('wood_shield');
-    this.player.weapon = club;
-    this.player.shield = woodShield;
-    this.player.inventory.push(club, woodShield, createItem('herb'), createItem('onigiri'));
+    const bat = createItem('bat');
+    const cap = createItem('cap');
+    this.player.weapon = bat;
+    this.player.shield = cap;
+    this.player.inventory.push(bat, cap, createItem('medicine'), createItem('burger'));
 
     this.buildFloor();
-    this.log(`ヤマカガシ峠に やってきた。`);
-    this.log(`${this.floor}F に 降り立った。`);
+    this.log(`${this.player.name}は ドキドキ洞窟に やってきた。`);
+    this.log(`${this.floor}F に おりたった。`);
   }
 
   // -----------------------------------------------------------
@@ -131,6 +131,7 @@ export class Game {
 
   tryMove(dx, dy) {
     if (this.over) return false;
+    if (dx !== 0) this.player.facing = dx; // 描画用の向き
     const nx = this.player.x + dx;
     const ny = this.player.y + dy;
 
@@ -177,7 +178,7 @@ export class Game {
         return true;
       }
       this.buildFloor();
-      this.log(`${this.floor}F に 降りた。`);
+      this.log(`${this.floor}F に おりた。`);
       return true;
     } else {
       this.log('ここには 階段が ない。');
@@ -192,7 +193,7 @@ export class Game {
     const g = this.groundItems[idx];
     if (g.gold !== undefined) {
       this.player.gold += g.gold;
-      this.log(`${g.gold} ギャラを 拾った。`);
+      this.log(`${g.gold} ドルを 拾った。`);
       this.groundItems.splice(idx, 1);
     } else {
       if (this.player.inventory.length >= 20) {
@@ -324,8 +325,8 @@ export class Game {
 
     // 隣接していれば攻撃
     if (dist === 1) {
-      if (m.special === 'nigiri' && chance(0.4)) {
-        this.log(`${m.name}は おにぎりの息を 吐いた！`);
+      if (m.special === 'burger' && chance(0.4)) {
+        this.log(`${m.name}は ハンバーガーの においを ただよわせた！`);
         if (chance(0.5)) {
           this.log('しかし 失敗した。');
         } else {
@@ -358,6 +359,7 @@ export class Game {
   }
 
   moveMonster(m, dx, dy) {
+    if (dx !== 0) m.facing = dx; // 描画用の向き
     const nx = m.x + dx;
     const ny = m.y + dy;
     if (!this.dungeon.isWalkable(nx, ny)) {
@@ -473,15 +475,15 @@ export class Game {
         for (let y = 0; y < this.dungeon.h; y++)
           for (let x = 0; x < this.dungeon.w; x++)
             this.explored[y][x] = true;
-        this.log('あかりの巻物を 読んだ。フロアの地図が 見えた！');
+        this.log(`${item.name}を 読んだ。フロアの地図が あたまに うかんだ！`);
         break;
       case 'identify': {
         const target = this.player.inventory.find(i => i.unidentified && !i.identified && i !== item);
         if (target) {
           target.identified = true;
-          this.log(`識別の巻物を 読んだ。${target.name} だと わかった！`);
+          this.log(`${item.name}を 読んだ。${target.name} だと わかった！`);
         } else {
-          this.log('識別の巻物を 読んだ。しかし 対象が なかった。');
+          this.log(`${item.name}を 読んだ。しかし なにも わからなかった。`);
         }
         break;
       }
@@ -495,7 +497,7 @@ export class Game {
             if (m.hp <= 0) this.killMonster(m);
           }
         }
-        this.log(`地雷の巻物を 読んだ。${hit}体に ダメージ！`);
+        this.log(`${item.name}を 読んだ。かみなりが ${hit}体に おちた！`);
         break;
       }
     }
@@ -531,7 +533,7 @@ export class Game {
       const px = this.player.x, py = this.player.y;
       this.player.x = target.x; this.player.y = target.y;
       target.x = px; target.y = py;
-      this.log(`場所がえの杖！ ${target.name}と 入れ替わった。`);
+      this.log(`${item.name}！ ${target.name}と 場所が 入れ替わった。`);
     } else if (item.effect === 'blast') {
       // 直線方向に吹き飛ばす（簡易：3マス押し出し）
       const dx = Math.sign(target.x - this.player.x);
@@ -542,7 +544,7 @@ export class Game {
           target.x = nx; target.y = ny;
         } else { target.hp -= 5; break; }
       }
-      this.log(`ふきとばしの杖！ ${target.name}を 吹き飛ばした。`);
+      this.log(`${item.name}！ ${target.name}を 吹き飛ばした。`);
       if (target.hp <= 0) this.killMonster(target);
     }
     return false; // 杖は消費しない（チャージ減のみ）
