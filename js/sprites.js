@@ -65,8 +65,8 @@ export const SPRITE_DEFS = {
 
   // ===== うろつきキノコ =====
   kinoko: {
-    w: 32, h: 32, outline: true,
-    palette: { m: '#e8504a', M: '#b8332c', w: '#fdeaea', t: '#efd9b0', T: '#c9a877', e: '#2a2530', k: '#7a3a34', f: '#d8b888', F: '#b89460' },
+    w: 32, h: 32, outline: true, faceChars: 'eo', // 背面では目(e)と口(o)だけ消す。カサ(m)は残す
+    palette: { m: '#e8504a', M: '#b8332c', w: '#fdeaea', t: '#efd9b0', T: '#c9a877', e: '#2a2530', o: '#a8302a', k: '#7a3a34', f: '#d8b888', F: '#b89460' },
     rows: [
       '................................',
       '...........mmmmmmmmmm...........',
@@ -85,7 +85,7 @@ export const SPRITE_DEFS = {
       '..........tteetttteett..........',
       '..........tteetttteett..........',
       '..........tttttttttttt..........',
-      '..........ttttmmmmtttt..........',
+      '..........ttttooootttt..........',
       '.........tttttttttttttt.........',
       '.........tttttttttttttt.........',
       '.........tTttttttttttTt.........',
@@ -380,6 +380,46 @@ export const SPRITE_DEFS = {
       '................................',
       '................................',
       '................................',
+    ],
+  },
+
+  // ===== プレイヤー：横向き（右向きプロファイル。左向きは反転） =====
+  player_side: {
+    w: 32, h: 32, outline: true,
+    palette: { r: '#e8463a', R: '#c22a1f', D: '#6e1d14', s: '#f7c89a', S: '#e0a877', e: '#22202a', m: '#b05a44', b: '#2f6fd8', B: '#2050a8', y: '#ffd24a', p: '#26305f', k: '#d83a3a', w: '#f4f4f4' },
+    rows: [
+      '................................',
+      '................................',
+      '...........rrrrrrrr.............',
+      '..........rrrrrrrrrr............',
+      '.........rrrrrrrrrrrr...........',
+      '.........rRRRRRRRRRRr...........',
+      '.........RRRRRRRRRRRR...........',
+      '..........ssssssssssDDDDD.......',
+      '..........ssssssssss............',
+      '..........ssssssseess...........',
+      '..........ssssssseess...........',
+      '..........ssssssssssS...........',
+      '..........ssssssmmsss...........',
+      '..........ssssssssss............',
+      '..........ssssssssss............',
+      '...........ssssssss.............',
+      '...........ssssssss.............',
+      '.........bbbbbbbbbbbb...........',
+      '.........byyyyyyyyyyb...........',
+      '.........bbbbbbbbbbbb...........',
+      '.........byyyyyyyyyyb...........',
+      '.........bbbbbbbbbbbb...........',
+      '.........byyyyyyyyyyb...........',
+      '..........bbbbbbbbbb............',
+      '..........ssbbbbbbss............',
+      '..........pppppppppp............',
+      '..........pppppppppp............',
+      '..........ppp...pppp............',
+      '..........sss...ssss............',
+      '..........sss...ssss............',
+      '..........kkk...kkkkk...........',
+      '..........www...wwwww...........',
     ],
   },
 
@@ -779,12 +819,36 @@ function steppedRows(rows, side, w, h) {
   return grid.map(r => r.join(''));
 }
 
-function buildSprite(key, tint, frame) {
+// 背面ビュー用：顔のパーツ（目・口・つば）を取り除き、左右の体色で埋める。
+// これで「正面」スプライトから自動的に「後ろ姿」を生成する。
+// 顔チャーはスプライトごとに def.faceChars で指定可（既定は目e/E・口m・つばD・瞳P）。
+const DEFAULT_FACE = 'eEmPD';
+function backRows(rows, w, faceStr) {
+  const FACE = new Set((faceStr || DEFAULT_FACE).split(''));
+  return rows.map((row) => {
+    const a = row.split('');
+    for (let x = 0; x < w; x++) {
+      if (!FACE.has(a[x])) continue;
+      let rep = '.';
+      for (let k = x - 1; k >= 0; k--) {
+        if (row[k] !== '.' && !FACE.has(row[k])) { rep = row[k]; break; }
+      }
+      if (rep === '.') for (let k = x + 1; k < w; k++) {
+        if (row[k] !== '.' && !FACE.has(row[k])) { rep = row[k]; break; }
+      }
+      a[x] = rep;
+    }
+    return a.join('');
+  });
+}
+
+function buildSprite(key, tint, frame, mode) {
   const def = SPRITE_DEFS[key];
   const w = defW(def), h = defH(def);
   let rows = def.rows;
   if (frame === 1) rows = steppedRows(rows, 'L', w, h);
   else if (frame === 2) rows = steppedRows(rows, 'R', w, h);
+  if (mode === 'back') rows = backRows(rows, w, def.faceChars);
 
   // 塗りの有無マップ
   const filled = (x, y) => x >= 0 && y >= 0 && x < w && y < h && rows[y][x] !== '.';
@@ -826,10 +890,16 @@ function buildSprite(key, tint, frame) {
 }
 
 // frame: 0=待機, 1=歩行A(左足上げ), 2=歩行B(右足上げ)
-export function getSprite(key, tint = null, frame = 0) {
-  const cacheKey = `${key}:${tint || ''}:${frame}`;
-  if (!spriteCache.has(cacheKey)) spriteCache.set(cacheKey, buildSprite(key, tint, frame));
+// mode: null=通常, 'back'=背面（顔を消す）
+export function getSprite(key, tint = null, frame = 0, mode = null) {
+  const cacheKey = `${key}:${tint || ''}:${frame}:${mode || ''}`;
+  if (!spriteCache.has(cacheKey)) spriteCache.set(cacheKey, buildSprite(key, tint, frame, mode));
   return spriteCache.get(cacheKey);
+}
+
+// そのキーのスプライト定義が存在するか（向き別スプライトのフォールバック判定に使う）
+export function spriteExists(key) {
+  return key in SPRITE_DEFS;
 }
 
 // アイテム→スプライト（種別ごとのアイコンを装備色で着色）

@@ -144,6 +144,14 @@ export class Game {
     this.shake = { start: Date.now(), mag, ttl };
   }
 
+  // 移動/攻撃の方向から表示向き(dir)を決める。
+  //   横・斜め → 'side'（facingで左右反転）、真上 → 'up'、真下 → 'down'
+  setDir(e, dx, dy) {
+    if (dx !== 0) { e.facing = dx; e.dir = 'side'; }
+    else if (dy < 0) e.dir = 'up';
+    else if (dy > 0) e.dir = 'down';
+  }
+
   // 攻撃の踏み込みアニメをセット
   lunge(entity, target) {
     entity.attackAnim = {
@@ -162,7 +170,7 @@ export class Game {
 
   tryMove(dx, dy) {
     if (this.over) return false;
-    if (dx !== 0) this.player.facing = dx; // 描画用の向き
+    this.setDir(this.player, dx, dy); // 描画用の向き（移動・攻撃とも）
     const nx = this.player.x + dx;
     const ny = this.player.y + dy;
 
@@ -386,8 +394,9 @@ export class Game {
     const p = this.player;
     const dist = Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y));
 
-    // 隣接していれば攻撃
+    // 隣接していれば攻撃（プレイヤーの方を向く）
     if (dist === 1) {
+      this.setDir(m, Math.sign(p.x - m.x), Math.sign(p.y - m.y));
       if (m.special === 'burger' && chance(0.4)) {
         this.log(`${m.name}は ハンバーガーの においを ただよわせた！`);
         if (chance(0.5)) {
@@ -422,7 +431,7 @@ export class Game {
   }
 
   moveMonster(m, dx, dy) {
-    if (dx !== 0) m.facing = dx; // 描画用の向き
+    this.setDir(m, dx, dy); // 描画用の向き
     const nx = m.x + dx;
     const ny = m.y + dy;
     if (!this.dungeon.isWalkable(nx, ny)) {

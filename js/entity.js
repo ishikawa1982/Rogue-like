@@ -9,7 +9,8 @@ export class Player {
     this.x = x;
     this.y = y;
     this.name = 'ケン';
-    this.facing = 1;            // 1=右向き, -1=左向き（描画用）
+    this.facing = 1;            // 1=右向き, -1=左向き（横向き時の反転用）
+    this.dir = 'down';          // 'down'|'up'|'side' 表示する向き
     this.level = 1;
     this.exp = 0;
     const s = levelStats(1);
@@ -96,6 +97,7 @@ export class Monster {
     this.sprite = def.sprite;
     this.color = def.color;
     this.facing = 1;
+    this.dir = 'down';
     this.special = def.special;
     this.asleep = false;     // 将来拡張用
 

@@ -3,7 +3,7 @@
 //   16x16のドット絵を2倍に拡大描画するスーファミ風レンダラー。
 // =============================================================
 import { TILE } from './data.js';
-import { getSprite, getItemSprite, getTileTexture, themeForFloor } from './sprites.js';
+import { getSprite, getItemSprite, getTileTexture, themeForFloor, spriteExists } from './sprites.js';
 
 export const TILE_SIZE = 32;
 
@@ -142,18 +142,34 @@ export class Renderer {
     const frame = walking ? (e.stepFrame ? 2 : 1) : 0;
     const bob = walking ? 1 : 0; // 歩行中は1px浮く
 
+    // 向きに応じてスプライト/反転を決定
+    //   down  : 正面（基本スプライト）
+    //   up    : 背面（専用 _up があれば使用、なければ顔を消した自動背面）
+    //   side  : 横向き（専用 _side があれば使用＋左右反転、なければ正面を反転）
+    const dir = e.dir || 'down';
+    let spr, flip = false, mode = null;
+    if (dir === 'up') {
+      if (spriteExists(spriteKey + '_up')) spr = getSprite(spriteKey + '_up', null, frame);
+      else spr = getSprite(spriteKey, null, frame, 'back');
+    } else if (dir === 'side') {
+      flip = e.facing < 0;
+      const sideKey = spriteKey + '_side';
+      spr = spriteExists(sideKey) ? getSprite(sideKey, null, frame) : getSprite(spriteKey, null, frame);
+    } else {
+      spr = getSprite(spriteKey, null, frame);
+    }
+
     this.drawShadow(px, py);
 
-    const spr = getSprite(spriteKey, null, frame);
     // 被弾点滅（白くフラッシュ）
     const hurt = now - (e.hurtAt || 0) < 160;
-    this.drawSprite(spr, px, py - bob, e.facing < 0);
+    this.drawSprite(spr, px, py - bob, flip);
     if (hurt) {
       const ctx = this.ctx;
       ctx.save();
       ctx.globalAlpha = 0.6;
       ctx.globalCompositeOperation = 'lighter';
-      this.drawSprite(spr, px, py - bob, e.facing < 0);
+      this.drawSprite(spr, px, py - bob, flip);
       ctx.restore();
     }
   }
