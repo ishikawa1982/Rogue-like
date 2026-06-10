@@ -1,5 +1,6 @@
 // =============================================================
 // data.js - ゲーム内のマスターデータ（モンスター・アイテム定義）
+//   MOTHER2風の世界観：現代風でちょっとヘンな敵やアイテムたち
 // =============================================================
 
 // タイル種別
@@ -12,68 +13,68 @@ export const TILE = {
 
 // アイテム種別
 export const ITEM_TYPE = {
-  WEAPON: 'weapon',   // 武器
-  SHIELD: 'shield',   // 盾
-  HERB: 'herb',       // 草
-  SCROLL: 'scroll',   // 巻物
-  FOOD: 'food',       // 食料（おにぎり）
-  STAFF: 'staff',     // 杖
+  WEAPON: 'weapon',   // ぶき
+  SHIELD: 'shield',   // ぼうし（防具）
+  HERB: 'herb',       // くすり
+  SCROLL: 'scroll',   // メモ・チラシ
+  FOOD: 'food',       // たべもの
+  STAFF: 'staff',     // ステッキ
 };
 
 // -------------------------------------------------------------
 // モンスター定義
-//   level: 出現する最小フロア
+//   minFloor: 出現する最小フロア
 //   hp, atk: ステータス
 //   exp: 倒したときの経験値
-//   gold: 倒したときに落とすギャラ（最大値、0〜goldの乱数）
+//   gold: 倒したときに落とすドル（最大値、0〜goldの乱数）
 //   ai: 'chase'(追跡) / 'erratic'(不規則) / 'special'(特殊)
-//   glyph/color: 表示用
+//   sprite: スプライトキー / color: ミニマップ等の表示色
 // -------------------------------------------------------------
 export const MONSTERS = [
-  { id: 'mamuru',   name: 'マムル',       minFloor: 1, hp: 7,   atk: 2,  exp: 2,   gold: 5,   ai: 'chase',   glyph: 'M', color: '#6ad26a' },
-  { id: 'slime',    name: 'スライム',     minFloor: 1, hp: 9,   atk: 3,  exp: 3,   gold: 6,   ai: 'chase',   glyph: 'S', color: '#4fc3f7' },
-  { id: 'bat',      name: 'おおコウモリ', minFloor: 2, hp: 12,  atk: 4,  exp: 5,   gold: 8,   ai: 'erratic', glyph: 'B', color: '#b39ddb' },
-  { id: 'nigiri',   name: 'にぎり見習い', minFloor: 3, hp: 14,  atk: 5,  exp: 7,   gold: 10,  ai: 'special', glyph: 'N', color: '#ffd54f', special: 'nigiri' },
-  { id: 'goblin',   name: 'ゴブリン',     minFloor: 4, hp: 20,  atk: 7,  exp: 10,  gold: 15,  ai: 'chase',   glyph: 'G', color: '#a1887f' },
-  { id: 'wizard',   name: 'グレートウィザード', minFloor: 6, hp: 24, atk: 9, exp: 14, gold: 20, ai: 'chase', glyph: 'W', color: '#ce93d8' },
-  { id: 'ironhead', name: 'アイアンヘッド', minFloor: 8, hp: 35, atk: 12, exp: 22, gold: 30, ai: 'chase', glyph: 'I', color: '#90a4ae' },
-  { id: 'dragon',   name: 'りゅう',       minFloor: 10, hp: 60, atk: 18, exp: 45, gold: 60, ai: 'chase', glyph: 'D', color: '#ef5350' },
+  { id: 'kinoko', name: 'うろつきキノコ',   minFloor: 1,  hp: 7,  atk: 2,  exp: 2,  gold: 5,  ai: 'chase',   sprite: 'kinoko', color: '#e85048' },
+  { id: 'jelly',  name: 'ゼリーくん',       minFloor: 1,  hp: 9,  atk: 3,  exp: 3,  gold: 6,  ai: 'chase',   sprite: 'jelly',  color: '#48c8b0' },
+  { id: 'crow',   name: 'いたずらガラス',   minFloor: 2,  hp: 12, atk: 4,  exp: 5,  gold: 8,  ai: 'erratic', sprite: 'crow',   color: '#9090a8' },
+  { id: 'cook',   name: 'みならいコック',   minFloor: 3,  hp: 14, atk: 5,  exp: 7,  gold: 10, ai: 'special', sprite: 'cook',   color: '#f8f8f8', special: 'burger' },
+  { id: 'punk',   name: 'ツッパリこぞう',   minFloor: 4,  hp: 20, atk: 7,  exp: 10, gold: 15, ai: 'chase',   sprite: 'punk',   color: '#40c840' },
+  { id: 'alien',  name: 'うちゅうじんグレイ', minFloor: 6, hp: 24, atk: 9,  exp: 14, gold: 20, ai: 'chase',   sprite: 'alien',  color: '#c0d0d0' },
+  { id: 'robot',  name: 'ガラクタロボ',     minFloor: 8,  hp: 35, atk: 12, exp: 22, gold: 30, ai: 'chase',   sprite: 'robot',  color: '#a8b4c4' },
+  { id: 'lizard', name: 'サイケなトカゲ',   minFloor: 10, hp: 60, atk: 18, exp: 45, gold: 60, ai: 'chase',   sprite: 'lizard', color: '#c050d0' },
 ];
 
 // -------------------------------------------------------------
 // アイテム定義
 // -------------------------------------------------------------
 export const ITEMS = [
-  // --- 武器（power=ちから補正） ---
-  { id: 'kobou',      name: 'こん棒',       type: ITEM_TYPE.WEAPON, power: 2,  glyph: ')', color: '#bcaaa4' },
-  { id: 'copper',     name: '銅の剣',       type: ITEM_TYPE.WEAPON, power: 4,  glyph: ')', color: '#d7905a' },
-  { id: 'iron_axe',   name: '鉄の斧',       type: ITEM_TYPE.WEAPON, power: 6,  glyph: ')', color: '#cfd8dc' },
-  { id: 'primal_axe', name: '原始の斧',     type: ITEM_TYPE.WEAPON, power: 8,  glyph: ')', color: '#ffb74d' },
+  // --- ぶき（power=こうげき補正） ---
+  { id: 'bat',     name: 'バット',       type: ITEM_TYPE.WEAPON, power: 2, glyph: ')', color: '#d8a050' },
+  { id: 'frypan',  name: 'フライパン',   type: ITEM_TYPE.WEAPON, power: 4, glyph: ')', color: '#b8bcc8' },
+  { id: 'yoyo',    name: 'ヨーヨー',     type: ITEM_TYPE.WEAPON, power: 6, glyph: ')', color: '#e85048' },
+  { id: 'starbat', name: 'スターバット', type: ITEM_TYPE.WEAPON, power: 8, glyph: ')', color: '#ffd848' },
 
-  // --- 盾（power=防御補正） ---
-  { id: 'wood_shield',  name: '木の盾',     type: ITEM_TYPE.SHIELD, power: 2, glyph: '[', color: '#a1887f' },
-  { id: 'bronze_shield',name: '青銅の盾',   type: ITEM_TYPE.SHIELD, power: 4, glyph: '[', color: '#c69c6d' },
-  { id: 'iron_shield',  name: '鉄の盾',     type: ITEM_TYPE.SHIELD, power: 6, glyph: '[', color: '#cfd8dc' },
-  { id: 'dragon_shield',name: 'ドラゴンシールド', type: ITEM_TYPE.SHIELD, power: 9, glyph: '[', color: '#ef9a9a' },
+  // --- ぼうし（power=ぼうぎょ補正） ---
+  { id: 'cap',      name: 'やきゅうぼう',   type: ITEM_TYPE.SHIELD, power: 2, glyph: '[', color: '#3878e0' },
+  { id: 'helmet',   name: 'ヘルメット',     type: ITEM_TYPE.SHIELD, power: 4, glyph: '[', color: '#e8b838' },
+  { id: 'metalcap', name: 'メタルキャップ', type: ITEM_TYPE.SHIELD, power: 6, glyph: '[', color: '#aab4c4' },
+  { id: 'starcap',  name: 'スターキャップ', type: ITEM_TYPE.SHIELD, power: 9, glyph: '[', color: '#e84878' },
 
-  // --- 草（使うと効果。effectで分岐） ---
-  { id: 'herb',       name: '薬草',         type: ITEM_TYPE.HERB, effect: 'heal',   value: 25, glyph: '"', color: '#81c784', unidentified: true },
-  { id: 'life_herb',  name: '命の草',       type: ITEM_TYPE.HERB, effect: 'maxhp',  value: 5,  glyph: '"', color: '#aed581', unidentified: true },
-  { id: 'power_herb', name: 'ちからの草',   type: ITEM_TYPE.HERB, effect: 'power',  value: 1,  glyph: '"', color: '#ffb74d', unidentified: true },
-  { id: 'poison_herb',name: 'どく草',       type: ITEM_TYPE.HERB, effect: 'poison', value: 3,  glyph: '"', color: '#9575cd', unidentified: true },
+  // --- くすり（使うと効果。effectで分岐） ---
+  { id: 'medicine',  name: 'キズぐすり',     type: ITEM_TYPE.HERB, effect: 'heal',   value: 25, glyph: '"', color: '#58c038', unidentified: true },
+  { id: 'pudding',   name: 'いのちのプリン', type: ITEM_TYPE.HERB, effect: 'maxhp',  value: 5,  glyph: '"', color: '#f8c848', unidentified: true },
+  { id: 'protein',   name: 'プロテイン',     type: ITEM_TYPE.HERB, effect: 'power',  value: 1,  glyph: '"', color: '#e88838', unidentified: true },
+  { id: 'badbanana', name: 'くさったバナナ', type: ITEM_TYPE.HERB, effect: 'poison', value: 3,  glyph: '"', color: '#9868d8', unidentified: true },
 
-  // --- 巻物 ---
-  { id: 'scroll_light', name: 'あかりの巻物', type: ITEM_TYPE.SCROLL, effect: 'light',  glyph: '?', color: '#fff176', unidentified: true },
-  { id: 'scroll_id',    name: '識別の巻物',  type: ITEM_TYPE.SCROLL, effect: 'identify',glyph: '?', color: '#4dd0e1', unidentified: true },
-  { id: 'scroll_quake', name: '地雷の巻物',  type: ITEM_TYPE.SCROLL, effect: 'quake',  glyph: '?', color: '#ff8a65', unidentified: true },
+  // --- メモ・チラシ ---
+  { id: 'flyer_map',     name: 'ちずのチラシ',   type: ITEM_TYPE.SCROLL, effect: 'light',    glyph: '?', color: '#e89038', unidentified: true },
+  { id: 'flyer_know',    name: 'ものしりメモ',   type: ITEM_TYPE.SCROLL, effect: 'identify', glyph: '?', color: '#48a8e8', unidentified: true },
+  { id: 'flyer_thunder', name: 'かみなりのチラシ', type: ITEM_TYPE.SCROLL, effect: 'quake',  glyph: '?', color: '#e8d038', unidentified: true },
 
-  // --- 食料 ---
-  { id: 'onigiri',     name: 'おにぎり',     type: ITEM_TYPE.FOOD, value: 50,  glyph: '*', color: '#fff8e1' },
-  { id: 'big_onigiri', name: '大きいおにぎり', type: ITEM_TYPE.FOOD, value: 100, glyph: '*', color: '#ffe082' },
+  // --- たべもの ---
+  { id: 'burger', name: 'ハンバーガー', type: ITEM_TYPE.FOOD, value: 50,  glyph: '*', color: '#e8a848' },
+  { id: 'pizza',  name: 'ピザ',         type: ITEM_TYPE.FOOD, value: 100, glyph: '*', color: '#f8c848' },
 
-  // --- 杖 ---
-  { id: 'staff_swap',  name: '場所がえの杖', type: ITEM_TYPE.STAFF, effect: 'swap',  charges: 4, glyph: '/', color: '#7986cb', unidentified: true },
-  { id: 'staff_blast', name: 'ふきとばしの杖', type: ITEM_TYPE.STAFF, effect: 'blast', charges: 5, glyph: '/', color: '#4fc3f7', unidentified: true },
+  // --- ステッキ ---
+  { id: 'stick_swap',  name: 'いれかえステッキ',   type: ITEM_TYPE.STAFF, effect: 'swap',  charges: 4, glyph: '/', color: '#7986cb', unidentified: true },
+  { id: 'stick_blast', name: 'ふっとばしステッキ', type: ITEM_TYPE.STAFF, effect: 'blast', charges: 5, glyph: '/', color: '#4fc3f7', unidentified: true },
 ];
 
 // レベルアップに必要な経験値テーブル（インデックス=レベル）

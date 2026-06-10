@@ -45,9 +45,9 @@ export function randomItem(floor) {
 export function displayName(item) {
   if (item.unidentified && !item.identified) {
     switch (item.type) {
-      case ITEM_TYPE.HERB:   return 'なぞの草';
-      case ITEM_TYPE.SCROLL: return 'なぞの巻物';
-      case ITEM_TYPE.STAFF:  return 'なぞの杖';
+      case ITEM_TYPE.HERB:   return 'なぞのくすり';
+      case ITEM_TYPE.SCROLL: return 'なぞのメモ';
+      case ITEM_TYPE.STAFF:  return 'なぞのステッキ';
     }
   }
   let name = item.name;

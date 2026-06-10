@@ -3,6 +3,7 @@
 // =============================================================
 import { ITEM_TYPE } from './data.js';
 import { displayName } from './items.js';
+import { getItemSpriteURL } from './sprites.js';
 
 export class UI {
   constructor(game) {
@@ -50,7 +51,8 @@ export class UI {
     this.el.exp.textContent = p.expToNext();
     this.el.gold.textContent = p.gold;
     this.el.turn.textContent = g.turn;
-    this.el.time.textContent = this.fmtTime(g.elapsed);
+    const liveSec = g.over ? g.elapsed : Math.floor((Date.now() - g.startTime) / 1000);
+    this.el.time.textContent = this.fmtTime(liveSec);
     this.el.weapon.textContent = p.weapon ? displayName(p.weapon) : '素手';
     this.el.shield.textContent = p.shield ? displayName(p.shield) : 'なし';
 
@@ -59,7 +61,11 @@ export class UI {
   }
 
   renderLog() {
-    const recent = this.game.messages.slice(-6);
+    // メッセージ数が変わらなければ再構築しない（毎フレーム呼ばれるため）
+    const len = this.game.messages.length;
+    if (len === this._lastLogLen) return;
+    this._lastLogLen = len;
+    const recent = this.game.messages.slice(-4);
     this.el.log.innerHTML = recent
       .map((m, i) => `<div class="log-line${i === recent.length - 1 ? ' log-new' : ''}">${m}</div>`)
       .join('');
@@ -86,12 +92,12 @@ export class UI {
 
   typeLabel(item) {
     switch (item.type) {
-      case ITEM_TYPE.WEAPON: return '武器';
-      case ITEM_TYPE.SHIELD: return '盾';
-      case ITEM_TYPE.HERB:   return '草';
-      case ITEM_TYPE.SCROLL: return '巻物';
-      case ITEM_TYPE.FOOD:   return '食料';
-      case ITEM_TYPE.STAFF:  return '杖';
+      case ITEM_TYPE.WEAPON: return 'ぶき';
+      case ITEM_TYPE.SHIELD: return 'ぼうし';
+      case ITEM_TYPE.HERB:   return 'くすり';
+      case ITEM_TYPE.SCROLL: return 'メモ';
+      case ITEM_TYPE.FOOD:   return 'たべもの';
+      case ITEM_TYPE.STAFF:  return 'ステッキ';
       default: return '';
     }
   }
@@ -99,6 +105,10 @@ export class UI {
   renderInventory() {
     const g = this.game;
     const inv = g.player.inventory;
+    // 状態が変わらなければ再構築しない（毎フレーム呼ばれるため）
+    const sig = inv.map(it => `${it.id}${it.plus || ''}${it.charges ?? ''}${it.identified ? '1' : '0'}${g.player.weapon === it || g.player.shield === it ? 'E' : ''}`).join('|') + `#${this.invIndex}`;
+    if (sig === this._lastInvSig) return;
+    this._lastInvSig = sig;
     if (inv.length === 0) {
       this.el.invList.innerHTML = '<div class="inv-empty">持ち物は からっぽだ</div>';
       return;
@@ -107,7 +117,7 @@ export class UI {
       const equipped = (g.player.weapon === item || g.player.shield === item) ? ' E' : '';
       const sel = i === this.invIndex ? ' selected' : '';
       return `<div class="inv-item${sel}">
-        <span class="inv-glyph" style="color:${item.color}">${item.glyph}</span>
+        <img class="inv-icon" src="${getItemSpriteURL(item)}" alt="">
         <span class="inv-type">${this.typeLabel(item)}</span>
         <span class="inv-name">${displayName(item)}<span class="inv-eq">${equipped}</span></span>
       </div>`;

@@ -8,7 +8,9 @@ export class Player {
   constructor(x, y) {
     this.x = x;
     this.y = y;
-    this.name = 'シレン';
+    this.name = 'ケン';
+    this.facing = 1;            // 1=右向き, -1=左向き（横向き時の反転用）
+    this.dir = 'down';          // 'down'|'up'|'side' 表示する向き
     this.level = 1;
     this.exp = 0;
     const s = levelStats(1);
@@ -27,6 +29,12 @@ export class Player {
 
     this.regenAccum = 0;        // HP自然回復の端数
     this.hungerAccum = 0;       // 満腹度減少の端数
+
+    // 描画アニメ用
+    this.stepFrame = 0;         // 歩行フレームの足（0/1で交互）
+    this.movedAt = 0;           // 最後に移動した時刻(ms)
+    this.attackAnim = null;     // 攻撃の踏み込み {dx,dy,start}
+    this.hurtAt = 0;            // 被弾した時刻(ms)（点滅用）
   }
 
   // 攻撃力 = ちから + 武器power(+強化値)
@@ -86,10 +94,18 @@ export class Monster {
     this.exp = def.exp;
     this.gold = def.gold;
     this.ai = def.ai;
-    this.glyph = def.glyph;
+    this.sprite = def.sprite;
     this.color = def.color;
+    this.facing = 1;
+    this.dir = 'down';
     this.special = def.special;
     this.asleep = false;     // 将来拡張用
+
+    // 描画アニメ用
+    this.stepFrame = 0;
+    this.movedAt = 0;
+    this.attackAnim = null;
+    this.hurtAt = 0;
   }
 }
 
