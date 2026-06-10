@@ -445,15 +445,34 @@ for (const [key, def] of Object.entries(SPRITE_DEFS)) {
 // ---- スプライト生成＆キャッシュ ----
 const spriteCache = new Map();
 
-function buildSprite(key, tint) {
+// 歩行フレーム：脚（下部の列）の片側を1px持ち上げて「片足を上げた」絵を作る。
+// side='L' で左半分(列0-7)、'R' で右半分(列8-15)の脚を持ち上げる。
+const LEG_TOP = 12;
+function steppedRows(rows, side) {
+  const grid = rows.map(r => r.split(''));
+  const inSide = (x) => (side === 'L' ? x < 8 : x >= 8);
+  for (let x = 0; x < 16; x++) {
+    if (!inSide(x)) continue;
+    // 脚の領域だけ1px上へシフト（最下行は地面から離れて空白に）
+    for (let y = LEG_TOP; y < 16; y++) {
+      grid[y][x] = y + 1 < 16 ? rows[y + 1][x] : '.';
+    }
+  }
+  return grid.map(r => r.join(''));
+}
+
+function buildSprite(key, tint, frame) {
   const def = SPRITE_DEFS[key];
+  let rows = def.rows;
+  if (frame === 1) rows = steppedRows(rows, 'L');
+  else if (frame === 2) rows = steppedRows(rows, 'R');
   const canvas = document.createElement('canvas');
   canvas.width = 16;
   canvas.height = 16;
   const ctx = canvas.getContext('2d');
   for (let y = 0; y < 16; y++) {
     for (let x = 0; x < 16; x++) {
-      const ch = def.rows[y][x];
+      const ch = rows[y][x];
       if (ch === '.') continue;
       let color = def.palette[ch];
       if (color === 'TINT') color = tint || '#c0c0c0';
@@ -465,9 +484,10 @@ function buildSprite(key, tint) {
   return canvas;
 }
 
-export function getSprite(key, tint = null) {
-  const cacheKey = `${key}:${tint || ''}`;
-  if (!spriteCache.has(cacheKey)) spriteCache.set(cacheKey, buildSprite(key, tint));
+// frame: 0=待機, 1=歩行A(左足上げ), 2=歩行B(右足上げ)
+export function getSprite(key, tint = null, frame = 0) {
+  const cacheKey = `${key}:${tint || ''}:${frame}`;
+  if (!spriteCache.has(cacheKey)) spriteCache.set(cacheKey, buildSprite(key, tint, frame));
   return spriteCache.get(cacheKey);
 }
 

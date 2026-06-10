@@ -51,7 +51,8 @@ export class UI {
     this.el.exp.textContent = p.expToNext();
     this.el.gold.textContent = p.gold;
     this.el.turn.textContent = g.turn;
-    this.el.time.textContent = this.fmtTime(g.elapsed);
+    const liveSec = g.over ? g.elapsed : Math.floor((Date.now() - g.startTime) / 1000);
+    this.el.time.textContent = this.fmtTime(liveSec);
     this.el.weapon.textContent = p.weapon ? displayName(p.weapon) : '素手';
     this.el.shield.textContent = p.shield ? displayName(p.shield) : 'なし';
 
@@ -60,6 +61,10 @@ export class UI {
   }
 
   renderLog() {
+    // メッセージ数が変わらなければ再構築しない（毎フレーム呼ばれるため）
+    const len = this.game.messages.length;
+    if (len === this._lastLogLen) return;
+    this._lastLogLen = len;
     const recent = this.game.messages.slice(-4);
     this.el.log.innerHTML = recent
       .map((m, i) => `<div class="log-line${i === recent.length - 1 ? ' log-new' : ''}">${m}</div>`)
@@ -100,6 +105,10 @@ export class UI {
   renderInventory() {
     const g = this.game;
     const inv = g.player.inventory;
+    // 状態が変わらなければ再構築しない（毎フレーム呼ばれるため）
+    const sig = inv.map(it => `${it.id}${it.plus || ''}${it.charges ?? ''}${it.identified ? '1' : '0'}${g.player.weapon === it || g.player.shield === it ? 'E' : ''}`).join('|') + `#${this.invIndex}`;
+    if (sig === this._lastInvSig) return;
+    this._lastInvSig = sig;
     if (inv.length === 0) {
       this.el.invList.innerHTML = '<div class="inv-empty">持ち物は からっぽだ</div>';
       return;

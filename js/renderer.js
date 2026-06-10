@@ -21,7 +21,7 @@ export class Renderer {
     this.canvas.height = rect.height;
   }
 
-  render(game) {
+  render(game, now = Date.now()) {
     const ctx = this.ctx;
     const d = game.dungeon;
     const W = this.canvas.width;
@@ -41,7 +41,18 @@ export class Renderer {
     camY = Math.max(0, Math.min(camY, d.h - rows + 4));
 
     const theme = themeForFloor(game.floor);
-    const bob = game.turn % 2; // ターンごとに1pxゆれる（生きてる感）
+
+    // ---- 画面ゆれ（被弾・かみなり・ゲームオーバー）----
+    ctx.save();
+    if (game.shake) {
+      const st = (now - game.shake.start) / game.shake.ttl;
+      if (st < 1) {
+        const m = game.shake.mag * (1 - st);
+        ctx.translate((Math.random() * 2 - 1) * m, (Math.random() * 2 - 1) * m);
+      } else {
+        game.shake = null;
+      }
+    }
 
     // ---- タイル描画 ----
     for (let sy = 0; sy < rows + 1; sy++) {
@@ -92,21 +103,59 @@ export class Renderer {
     // ---- モンスター ----
     for (const m of game.monsters) {
       if (!game.visible[m.y] || !game.visible[m.y][m.x]) continue;
+      this.drawEntity(m, m.sprite || m.id, camX, camY, now);
       const px = (m.x - camX) * TILE_SIZE;
       const py = (m.y - camY) * TILE_SIZE;
-      const yOff = (bob + m.x + m.y) % 2; // 個体ごとに位相をずらす
-      this.drawShadow(px, py);
-      this.drawSprite(getSprite(m.sprite || m.id), px, py - yOff, m.facing < 0);
       if (m.hp < m.maxHp) this.drawHpBar(px, py, m.hp / m.maxHp);
     }
 
     // ---- プレイヤー ----
-    const ppx = (game.player.x - camX) * TILE_SIZE;
-    const ppy = (game.player.y - camY) * TILE_SIZE;
-    this.drawShadow(ppx, ppy);
-    this.drawSprite(getSprite('player'), ppx, ppy - bob, game.player.facing < 0);
+    this.drawEntity(game.player, 'player', camX, camY, now);
+
+    // ---- エフェクト（ダメージ数字・斬撃・消滅・レベルアップ）----
+    this.drawEffects(game, camX, camY, now);
+
+    ctx.restore(); // 画面ゆれの解除
 
     this.renderMinimap(game);
+  }
+
+  // キャラ1体を描画（歩行アニメ・踏み込み・被弾点滅つき）
+  drawEntity(e, spriteKey, camX, camY, now) {
+    let px = (e.x - camX) * TILE_SIZE;
+    let py = (e.y - camY) * TILE_SIZE;
+
+    // 攻撃の踏み込み（target方向へ出て戻る）
+    if (e.attackAnim) {
+      const t = (now - e.attackAnim.start) / 180;
+      if (t < 1) {
+        const f = Math.sin(Math.PI * t) * TILE_SIZE * 0.3;
+        px += e.attackAnim.dx * f;
+        py += e.attackAnim.dy * f;
+      } else {
+        e.attackAnim = null;
+      }
+    }
+
+    // 歩行フレーム選択：直近220ms以内に移動していたら歩行絵
+    const walking = now - (e.movedAt || 0) < 220;
+    const frame = walking ? (e.stepFrame ? 2 : 1) : 0;
+    const bob = walking ? 1 : 0; // 歩行中は1px浮く
+
+    this.drawShadow(px, py);
+
+    const spr = getSprite(spriteKey, null, frame);
+    // 被弾点滅（白くフラッシュ）
+    const hurt = now - (e.hurtAt || 0) < 160;
+    this.drawSprite(spr, px, py - bob, e.facing < 0);
+    if (hurt) {
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.globalCompositeOperation = 'lighter';
+      this.drawSprite(spr, px, py - bob, e.facing < 0);
+      ctx.restore();
+    }
   }
 
   drawSprite(spr, px, py, flip = false) {
@@ -119,6 +168,94 @@ export class Renderer {
       ctx.restore();
     } else {
       ctx.drawImage(spr, px, py, TILE_SIZE, TILE_SIZE);
+    }
+  }
+
+  // -----------------------------------------------------------
+  // エフェクト描画
+  // -----------------------------------------------------------
+  drawEffects(game, camX, camY, now) {
+    const ctx = this.ctx;
+    for (const e of game.effects) {
+      const age = now - e.start;
+      const t = age / e.ttl;
+      if (t >= 1 || t < 0) continue;
+      const cx = (e.x - camX) * TILE_SIZE + TILE_SIZE / 2;
+      const cy = (e.y - camY) * TILE_SIZE + TILE_SIZE / 2;
+
+      if (e.type === 'damage' || e.type === 'heal') {
+        const rise = t * 22;
+        const alpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, alpha);
+        const big = e.crit ? 22 : 17;
+        ctx.font = `bold ${big}px "DotGothic16", monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        let txt, fill;
+        if (e.type === 'heal') { txt = `+${e.value}`; fill = '#7CFC6A'; }
+        else if (e.kind === 'player') { txt = `${e.value}`; fill = '#ff5a5a'; }
+        else { txt = `${e.value}`; fill = e.crit ? '#ffe24a' : '#ffffff'; }
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#000';
+        ctx.strokeText(txt, cx, cy - 10 - rise);
+        ctx.fillStyle = fill;
+        ctx.fillText(txt, cx, cy - 10 - rise);
+        if (e.crit) {
+          ctx.fillStyle = '#ffe24a';
+          ctx.font = `bold 11px "DotGothic16", monospace`;
+          ctx.strokeText('CRITICAL!', cx, cy - 28 - rise);
+          ctx.fillText('CRITICAL!', cx, cy - 28 - rise);
+        }
+        ctx.restore();
+
+      } else if (e.type === 'slash') {
+        // 斬撃のきらめき（拡大しながら消える×印）
+        const s = (0.4 + t * 0.9) * TILE_SIZE;
+        const alpha = 1 - t;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = e.crit ? '#ffe24a' : '#ffffff';
+        ctx.lineWidth = e.crit ? 4 : 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx - s / 2, cy - s / 2);
+        ctx.lineTo(cx + s / 2, cy + s / 2);
+        ctx.moveTo(cx + s / 2, cy - s / 2);
+        ctx.lineTo(cx - s / 2, cy + s / 2);
+        ctx.stroke();
+        ctx.restore();
+
+      } else if (e.type === 'poof') {
+        // 消滅：拡がる粒子リング
+        ctx.save();
+        const n = 8;
+        const r = t * TILE_SIZE * 0.9;
+        ctx.globalAlpha = 1 - t;
+        ctx.fillStyle = e.color || '#ffffff';
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2;
+          const sz = 4 * (1 - t) + 1;
+          ctx.fillRect(cx + Math.cos(a) * r - sz / 2, cy + Math.sin(a) * r - sz / 2, sz, sz);
+        }
+        ctx.restore();
+
+      } else if (e.type === 'levelup') {
+        const rise = t * 26;
+        const alpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, alpha);
+        ctx.font = `bold 16px "DotGothic16", monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = '#000';
+        const txt = e.text || 'LEVEL UP!';
+        ctx.strokeText(txt, cx, cy - 24 - rise);
+        ctx.fillStyle = '#ffe24a';
+        ctx.fillText(txt, cx, cy - 24 - rise);
+        ctx.restore();
+      }
     }
   }
 
