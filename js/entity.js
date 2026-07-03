@@ -33,6 +33,8 @@ export class Player {
     // 描画アニメ用
     this.stepFrame = 0;         // 歩行フレームの足（0/1で交互）
     this.movedAt = 0;           // 最後に移動した時刻(ms)
+    this.fromX = x;             // 移動補間の起点（renderer が lerp する）
+    this.fromY = y;
     this.attackAnim = null;     // 攻撃の踏み込み {dx,dy,start}
     this.hurtAt = 0;            // 被弾した時刻(ms)（点滅用）
   }
@@ -104,6 +106,8 @@ export class Monster {
     // 描画アニメ用
     this.stepFrame = 0;
     this.movedAt = 0;
+    this.fromX = x;
+    this.fromY = y;
     this.attackAnim = null;
     this.hurtAt = 0;
   }
