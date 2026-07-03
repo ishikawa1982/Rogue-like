@@ -926,19 +926,27 @@ export function getItemSpriteURL(item) {
 
 // =============================================================
 // タイルテクスチャ（フロア深度でパレットが変わる：洞窟→青→サイケ）
+//   各タイルは4バリアント。テーマごとに床の装飾（小石・キノコ・
+//   水晶・ネオン花など）と、壁にかかる松明スプライトも生成する。
 // =============================================================
 export const TILE_THEMES = [
   { // 1〜4F: 茶色の洞窟
     floor: '#b08858', floorDark: '#9c7848', corridor: '#8a6840', corridorDark: '#7a5c38',
     wallTop: '#6a4a30', wallFace: '#54382a', wallHi: '#8a644040', wallEdge: '#86603e', crack: '#442c20',
+    mote: ['rgba(235,205,150,', 'rgba(210,180,130,'],   // 環境パーティクル色
+    glow: 'rgba(255,176,88,',                           // 松明の暖色グロー
   },
   { // 5〜8F: 青い鉱窟
     floor: '#7888a8', floorDark: '#687894', corridor: '#5c6a88', corridorDark: '#505e78',
     wallTop: '#3c4868', wallFace: '#2e3850', wallHi: '#56648840', wallEdge: '#525f80', crack: '#242c40',
+    mote: ['rgba(160,220,255,', 'rgba(200,240,255,'],
+    glow: 'rgba(120,190,255,',
   },
   { // 9〜12F: サイケな紫
     floor: '#9868a8', floorDark: '#885894', corridor: '#7a5088', corridorDark: '#6a4478',
     wallTop: '#523060', wallFace: '#3e2348', wallHi: '#70459040', wallEdge: '#6a4080', crack: '#2e1838',
+    mote: ['rgba(255,130,220,', 'rgba(130,240,255,', 'rgba(200,130,255,'],
+    glow: 'rgba(255,120,220,',
   },
 ];
 
@@ -948,17 +956,19 @@ export function themeForFloor(floor) {
 
 const tileCache = new Map();
 
-// 決定的な疑似乱数（座標→0..1）
-function hash(x, y) {
+// 決定的な疑似乱数（座標→0..1）。描画側でも配置決定に使う。
+export function hash(x, y) {
   let h = (x * 374761393 + y * 668265263) | 0;
   h = (h ^ (h >> 13)) * 1274126177;
   return ((h ^ (h >> 16)) >>> 0) / 4294967295;
 }
 
 const TS = 32; // タイルのネイティブ解像度（キャラと同じ32pxドット）
+export const TILE_VARIANTS = 4; // 床・壁のバリアント数
 
-function buildTile(themeIdx, kind) {
+function buildTile(themeIdx, kind, variant = 0) {
   const t = TILE_THEMES[themeIdx];
+  const seed = variant * 97 + 13; // バリアントごとにノイズをずらす
   const canvas = document.createElement('canvas');
   canvas.width = TS;
   canvas.height = TS;
@@ -967,7 +977,6 @@ function buildTile(themeIdx, kind) {
 
   if (kind === 'floor' || kind === 'corridor') {
     const base = kind === 'floor' ? t.floor : t.corridor;
-    const dark = kind === 'floor' ? t.floorDark : t.corridorDark;
     const hi = shade(base, 1.10);
     const sp = shade(base, 0.86);
     // ベース
@@ -976,7 +985,7 @@ function buildTile(themeIdx, kind) {
     // 砂利・斑点（決定的ノイズ）で質感
     for (let y = 0; y < TS; y++) {
       for (let x = 0; x < TS; x++) {
-        const r = hash(x * 3 + 1, y * 5 + 2);
+        const r = hash(x * 3 + 1 + seed, y * 5 + 2 + seed);
         if (r < 0.06) px(x, y, sp);
         else if (r > 0.965) px(x, y, hi);
       }
@@ -992,6 +1001,25 @@ function buildTile(themeIdx, kind) {
     ctx.fillRect(0, 0, 1, TS);
     ctx.fillRect(0, 16, TS, 1);
     ctx.fillRect(16, 0, 1, TS);
+    // バリアント固有のくたびれ表現
+    if (kind === 'floor') {
+      const dk = shade(base, 0.78);
+      if (variant === 1) {
+        // 斜めのひび
+        for (let i = 0; i < 9; i++) px(6 + i, 20 - ((i / 2) | 0), dk);
+        px(7, 21, dk); px(11, 19, dk);
+      } else if (variant === 2) {
+        // すり減った明るい斑
+        for (let y = 8; y < 14; y++)
+          for (let x = 18; x < 27; x++)
+            if (hash(x * 9 + seed, y * 7) < 0.5) px(x, y, hi);
+      } else if (variant === 3) {
+        // 暗い染み
+        for (let y = 20; y < 27; y++)
+          for (let x = 6; x < 14; x++)
+            if (hash(x * 5, y * 9 + seed) < 0.45) px(x, y, sp);
+      }
+    }
 
   } else if (kind === 'wallTop') {
     // 岩の上面：ベース＋ごつごつした斑＋上に薄いハイライト
@@ -1001,7 +1029,7 @@ function buildTile(themeIdx, kind) {
     const d = shade(base, 0.82), l = shade(base, 1.16);
     for (let y = 0; y < TS; y++)
       for (let x = 0; x < TS; x++) {
-        const r = hash(x * 7 + 3, y * 11 + 5);
+        const r = hash(x * 7 + 3 + seed, y * 11 + 5 + seed);
         if (r < 0.12) px(x, y, d);
         else if (r > 0.9) px(x, y, l);
       }
@@ -1020,7 +1048,7 @@ function buildTile(themeIdx, kind) {
     const bh = 8, bw = 16;
     for (let y = 0; y < TS; y++) {
       const rowIdx = Math.floor(y / bh);
-      const offset = (rowIdx % 2) * (bw / 2);
+      const offset = ((rowIdx + variant) % 2) * (bw / 2);
       for (let x = 0; x < TS; x++) {
         const bx = (x + offset) % bw;
         const localY = y % bh;
@@ -1032,9 +1060,17 @@ function buildTile(themeIdx, kind) {
           px(x, y, blkLo);  // ブロック下面の影
         } else {
           // 軽い斑
-          if (hash(x * 13 + 7, y * 17 + 3) < 0.08) px(x, y, blkLo);
+          if (hash(x * 13 + 7 + seed, y * 17 + 3 + seed) < 0.08) px(x, y, blkLo);
         }
       }
+    }
+    // テーマ固有のきらめき（鉱窟は結晶、サイケは光る筋）
+    if (themeIdx === 1 && variant % 2 === 0) {
+      px(9, 12, '#a8d8f8'); px(10, 12, '#d8f0ff'); px(10, 13, '#a8d8f8');
+      px(22, 20, '#a8d8f8'); px(23, 21, '#d8f0ff');
+    } else if (themeIdx === 2 && variant % 2 === 1) {
+      px(7, 11, '#e878e8'); px(8, 12, '#ffa8ff');
+      px(24, 19, '#a878ff'); px(25, 20, '#d0a8ff');
     }
     // 崖上端のフチ（明）と最下段の濃い影
     ctx.fillStyle = shade(base, 1.3);
@@ -1045,8 +1081,139 @@ function buildTile(themeIdx, kind) {
   return canvas;
 }
 
-export function getTileTexture(themeIdx, kind) {
-  const key = `${themeIdx}:${kind}`;
-  if (!tileCache.has(key)) tileCache.set(key, buildTile(themeIdx, kind));
+export function getTileTexture(themeIdx, kind, variant = 0) {
+  const key = `${themeIdx}:${kind}:${variant}`;
+  if (!tileCache.has(key)) tileCache.set(key, buildTile(themeIdx, kind, variant));
   return tileCache.get(key);
+}
+
+// =============================================================
+// 床の装飾（テーマごとに4種）。透明地の32x32に小物を描く。
+// =============================================================
+export const DECO_COUNT = 4;
+const decoCache = new Map();
+
+function buildDeco(themeIdx, idx) {
+  const canvas = document.createElement('canvas');
+  canvas.width = TS;
+  canvas.height = TS;
+  const ctx = canvas.getContext('2d');
+  const px = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1); };
+  const blob = (cx, cy, r, c, hi) => { // 丸っこい小石
+    for (let y = -r; y <= r; y++)
+      for (let x = -r; x <= r; x++)
+        if (x * x + y * y <= r * r + 0.5) px(cx + x, cy + y, c);
+    if (hi) px(cx - 1, cy - 1, hi);
+  };
+
+  if (themeIdx === 0) {
+    // 洞窟：小石 / ひび / 赤キノコ / 骨
+    if (idx === 0) {
+      blob(10, 22, 2, '#8a6a48', '#c8a878'); blob(15, 25, 1, '#7a5c3c'); blob(22, 21, 2, '#96764e', '#c8a878');
+    } else if (idx === 1) {
+      const c = '#5c4028';
+      for (let i = 0; i < 10; i++) px(8 + i, 16 + ((i % 3) - 1), c);
+      px(12, 18, c); px(13, 19, c); px(18, 14, c);
+    } else if (idx === 2) {
+      // ミニキノコ
+      px(20, 18, '#e85048'); px(21, 18, '#e85048'); px(22, 18, '#e85048');
+      px(19, 19, '#e85048'); px(20, 19, '#fdeaea'); px(21, 19, '#e85048'); px(22, 19, '#e85048'); px(23, 19, '#e85048');
+      px(20, 20, '#efd9b0'); px(21, 20, '#efd9b0'); px(22, 20, '#efd9b0');
+      px(20, 21, '#c9a877'); px(21, 21, '#efd9b0'); px(22, 21, '#c9a877');
+    } else {
+      // 骨
+      const b = '#e8e0d0', s = '#b8b0a0';
+      px(9, 24, b); px(10, 24, b); px(11, 25, b); px(12, 25, b); px(13, 26, b); px(14, 26, b);
+      px(8, 23, b); px(8, 25, b); px(15, 25, s); px(15, 27, s);
+    }
+  } else if (themeIdx === 1) {
+    // 鉱窟：水晶（大）/ 板石 / 水たまり / 水晶（小）
+    if (idx === 0) {
+      const c = '#8ecdf2', hi = '#e2f6ff', dk = '#4a7ab0';
+      px(15, 14, hi); px(15, 15, c); px(14, 16, c); px(15, 16, hi); px(16, 16, c);
+      px(14, 17, c); px(15, 17, c); px(16, 17, c); px(13, 18, dk); px(14, 18, c); px(15, 18, c); px(16, 18, c); px(17, 18, dk);
+      px(19, 17, hi); px(19, 18, c); px(18, 19, c); px(19, 19, c); px(20, 19, dk);
+      px(14, 19, dk); px(15, 19, dk); px(16, 19, dk); px(18, 20, dk); px(19, 20, dk);
+    } else if (idx === 1) {
+      blob(10, 23, 2, '#5c6a84', '#9aacc4'); blob(21, 25, 2, '#66748e', '#9aacc4'); blob(16, 26, 1, '#525e76');
+    } else if (idx === 2) {
+      // 水たまり（明るいリム＋暗い水面）
+      ctx.fillStyle = '#4c5c80';
+      ctx.fillRect(11, 21, 10, 4);
+      ctx.fillRect(13, 20, 6, 6);
+      px(13, 21, '#8aa4d0'); px(14, 21, '#aac4e8'); px(18, 23, '#8aa4d0');
+    } else {
+      const c = '#8ecdf2', hi = '#e2f6ff';
+      px(22, 12, hi); px(22, 13, c); px(21, 14, c); px(22, 14, c); px(23, 14, '#4a7ab0');
+      px(9, 18, hi); px(9, 19, c); px(10, 19, '#4a7ab0');
+    }
+  } else {
+    // サイケ：ネオン花 / 光る胞子 / 紫水晶 / うずまき
+    if (idx === 0) {
+      const p = '#ff70d8', P = '#c840a8', y = '#ffe24a';
+      px(15, 16, p); px(17, 16, p); px(16, 15, p); px(16, 17, p);
+      px(16, 16, y); px(15, 15, P); px(17, 15, P); px(15, 17, P); px(17, 17, P);
+      px(16, 18, '#48a048'); px(16, 19, '#3a8a3a'); px(15, 20, '#48a048');
+    } else if (idx === 1) {
+      px(10, 14, '#7af0ff'); px(11, 15, '#c8f8ff');
+      px(21, 20, '#7af0ff'); px(22, 21, '#c8f8ff');
+      px(15, 25, '#ff8ae0'); px(16, 26, '#ffc8f0');
+    } else if (idx === 2) {
+      const c = '#b088e8', hi = '#e8d8ff', dk = '#6a4898';
+      px(18, 15, hi); px(18, 16, c); px(17, 17, c); px(18, 17, c); px(19, 17, c);
+      px(17, 18, c); px(18, 18, hi); px(19, 18, dk); px(16, 19, dk); px(17, 19, dk); px(18, 19, dk);
+    } else {
+      const c = '#7a4888';
+      px(14, 20, c); px(15, 19, c); px(16, 19, c); px(17, 20, c); px(17, 21, c);
+      px(16, 22, c); px(15, 22, c); px(14, 22, c); px(15, 21, '#c890d8');
+    }
+  }
+  return canvas;
+}
+
+export function getDecoTexture(themeIdx, idx) {
+  const key = `${themeIdx}:${idx}`;
+  if (!decoCache.has(key)) decoCache.set(key, buildDeco(themeIdx, idx));
+  return decoCache.get(key);
+}
+
+// =============================================================
+// 壁の松明（3フレームでゆらめく炎）。renderer が壁面タイルに重ねる。
+// =============================================================
+const torchCache = new Map();
+
+// 8x9の炎パターン×3フレーム（o=外炎, y=内炎, w=芯）
+const FLAME_FRAMES = [
+  ['...o....', '...oo...', '..ooyo..', '..oyyo..', '.ooyyoo.', '.oyywyo.', '.oyywyo.', '..oyyo..', '...oo...'],
+  ['....o...', '...oo...', '...oyo..', '..oyyoo.', '..oyyyo.', '.oyywyo.', '..yywy..', '..oyyo..', '...oo...'],
+  ['..o.....', '..oo.o..', '..oyoo..', '.ooyyo..', '.oyyyoo.', '.oywyyo.', '.oywyo..', '..oyy...', '...oo...'],
+];
+
+function buildTorch(frame) {
+  const canvas = document.createElement('canvas');
+  canvas.width = TS;
+  canvas.height = TS;
+  const ctx = canvas.getContext('2d');
+  const px = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1); };
+
+  // 鉄のブラケットと柄
+  for (let y = 18; y <= 23; y++) { px(15, y, '#6a4a2a'); px(16, y, '#8a6438'); }
+  px(14, 23, '#3a3630'); px(15, 23, '#4a443c'); px(16, 23, '#4a443c'); px(17, 23, '#3a3630');
+  px(14, 24, '#2e2a24'); px(17, 24, '#2e2a24');
+  // 炎（フレームごとにゆらぐ）
+  const map = FLAME_FRAMES[frame % FLAME_FRAMES.length];
+  const colors = { o: '#ff8c28', y: '#ffd848', w: '#fff8d8' };
+  for (let y = 0; y < map.length; y++) {
+    for (let x = 0; x < map[y].length; x++) {
+      const ch = map[y][x];
+      if (ch !== '.') px(12 + x, 9 + y, colors[ch]);
+    }
+  }
+  return canvas;
+}
+
+export function getTorchSprite(frame) {
+  const f = frame % FLAME_FRAMES.length;
+  if (!torchCache.has(f)) torchCache.set(f, buildTorch(f));
+  return torchCache.get(f);
 }

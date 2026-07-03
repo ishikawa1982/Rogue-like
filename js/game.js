@@ -28,6 +28,8 @@ export class Game {
     this.effects = [];     // 視覚エフェクト {type,x,y,start,ttl,...}
     this.soundQueue = [];  // 効果音名のキュー
     this.shake = null;     // 画面ゆれ {start,mag,ttl}
+    this.flash = null;     // 画面フラッシュ {start,ttl,color,alpha}
+    this.enteredAt = 0;    // フロア進入時刻（アイリスワイプ用）
 
     this.player = new Player(0, 0);
     // 初期装備とアイテム
@@ -56,6 +58,8 @@ export class Game {
     const start = this.dungeon.randomFloor([this.dungeon.stairs]);
     this.player.x = start.x;
     this.player.y = start.y;
+    this.player.fromX = start.x; // 前フロアからの移動補間を打ち切る
+    this.player.fromY = start.y;
 
     // モンスター配置
     const monCount = 4 + Math.floor(this.floor * 0.8);
@@ -79,6 +83,7 @@ export class Game {
     }
 
     this.updateVisibility();
+    this.enteredAt = Date.now(); // 描画側がアイリスワイプを掛ける
   }
 
   makeBoolMap() {
@@ -144,6 +149,18 @@ export class Game {
     this.shake = { start: Date.now(), mag, ttl };
   }
 
+  addFlash(color, alpha, ttl = 160) {
+    this.flash = { color, alpha, start: Date.now(), ttl };
+  }
+
+  // 移動補間の起点を記録してから座標を更新する
+  stepTo(e, nx, ny) {
+    e.fromX = e.x;
+    e.fromY = e.y;
+    e.x = nx;
+    e.y = ny;
+  }
+
   // 移動/攻撃の方向から表示向き(dir)を決める。
   //   横・斜め → 'side'（facingで左右反転）、真上 → 'up'、真下 → 'down'
   setDir(e, dx, dy) {
@@ -191,10 +208,10 @@ export class Game {
       }
     }
 
-    this.player.x = nx;
-    this.player.y = ny;
+    this.stepTo(this.player, nx, ny);
     this.player.stepFrame ^= 1;
     this.player.movedAt = Date.now();
+    this.addEffect('dust', this.player.fromX, this.player.fromY, { ttl: 320 });
     this.sfx('step');
     this.pickupHere();
     this.endPlayerTurn();
@@ -272,10 +289,13 @@ export class Game {
     target.hurtAt = Date.now();
     this.log(`${target.name} に ${dmg} のダメージ！${crit ? '会心の一撃！' : ''}`);
 
-    // 演出
+    // 演出（斬撃は攻撃方向つき）
+    const sdx = Math.sign(target.x - this.player.x);
+    const sdy = Math.sign(target.y - this.player.y);
     this.lunge(this.player, target);
-    this.addEffect('slash', target.x, target.y, { crit });
+    this.addEffect('slash', target.x, target.y, { crit, dx: sdx, dy: sdy });
     this.addEffect('damage', target.x, target.y, { value: dmg, crit, kind: 'enemy', ttl: 700 });
+    if (crit) this.addFlash('#fff6d8', 0.16, 140);
     this.sfx(crit ? 'crit' : 'hit');
 
     if (target.hp <= 0) {
@@ -291,6 +311,7 @@ export class Game {
     msgs.forEach(msg => this.log(msg));
     if (msgs.length > 0) {
       this.addEffect('levelup', this.player.x, this.player.y, { ttl: 1000 });
+      this.addFlash('#ffe24a', 0.18, 300);
       this.sfx('levelup');
     }
     // ドルドロップ
@@ -307,9 +328,11 @@ export class Game {
     this.player.hurtAt = Date.now();
     this.log(`${m.name} の こうげき！ ${dmg} のダメージを うけた。`);
 
-    // 演出
+    // 演出（斬撃は攻撃方向つき）
     this.lunge(m, this.player);
-    this.addEffect('slash', this.player.x, this.player.y, {});
+    this.addEffect('slash', this.player.x, this.player.y, {
+      dx: Math.sign(this.player.x - m.x), dy: Math.sign(this.player.y - m.y),
+    });
     this.addEffect('damage', this.player.x, this.player.y, { value: dmg, kind: 'player', ttl: 700 });
     this.addShake(Math.min(7, 3 + dmg * 0.2));
     this.sfx('hurt');
@@ -323,6 +346,7 @@ export class Game {
   gameOver() {
     this.over = true;
     this.addShake(9, 500);
+    this.addFlash('#c81818', 0.28, 450);
     this.sfx('gameover');
     this.log(`${this.player.name} は ちからつきた…`);
     this.log(`${this.floor}F で たおれた。`);
@@ -437,18 +461,17 @@ export class Game {
     if (!this.dungeon.isWalkable(nx, ny)) {
       // 進めなければ軸を分けて再挑戦
       if (dx !== 0 && this.dungeon.isWalkable(m.x + dx, m.y) && !this.monsterAt(m.x + dx, m.y)) {
-        m.x += dx; this.markMoved(m); return;
+        this.stepTo(m, m.x + dx, m.y); this.markMoved(m); return;
       }
       if (dy !== 0 && this.dungeon.isWalkable(m.x, m.y + dy) && !this.monsterAt(m.x, m.y + dy)) {
-        m.y += dy; this.markMoved(m); return;
+        this.stepTo(m, m.x, m.y + dy); this.markMoved(m); return;
       }
       return;
     }
     // プレイヤーや他モンスターがいる場所には移動しない
     if (nx === this.player.x && ny === this.player.y) return;
     if (this.monsterAt(nx, ny)) return;
-    m.x = nx;
-    m.y = ny;
+    this.stepTo(m, nx, ny);
     this.markMoved(m);
   }
 
@@ -628,6 +651,9 @@ export class Game {
       const px = this.player.x, py = this.player.y;
       this.player.x = target.x; this.player.y = target.y;
       target.x = px; target.y = py;
+      // ワープなので移動補間はさせない（起点も新座標に）
+      this.player.fromX = this.player.x; this.player.fromY = this.player.y;
+      target.fromX = target.x; target.fromY = target.y;
       this.addEffect('poof', px, py, { color: '#7986cb', ttl: 350 });
       this.addEffect('poof', target.x, target.y, { color: '#7986cb', ttl: 350 });
       this.log(`${item.name}！ ${target.name}と 場所が 入れ替わった。`);
@@ -635,12 +661,14 @@ export class Game {
       // 直線方向に吹き飛ばす（簡易：3マス押し出し）
       const dx = Math.sign(target.x - this.player.x);
       const dy = Math.sign(target.y - this.player.y);
+      target.fromX = target.x; target.fromY = target.y; // 吹き飛びをスライド表示
       for (let i = 0; i < 3; i++) {
         const nx = target.x + dx, ny = target.y + dy;
         if (this.dungeon.isWalkable(nx, ny) && !this.monsterAt(nx, ny)) {
           target.x = nx; target.y = ny;
         } else { target.hp -= 5; break; }
       }
+      target.movedAt = Date.now();
       this.log(`${item.name}！ ${target.name}を 吹き飛ばした。`);
       if (target.hp <= 0) this.killMonster(target);
     }

@@ -85,6 +85,22 @@ html, body {
 }
 #game { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 
+/* CRT風スキャンライン（ごく薄く。演出はcanvas側のビネットと合わせる） */
+#canvas-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.09) 0px,
+    rgba(0, 0, 0, 0.09) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+}
+
 /* メッセージログ（MOTHER2のテキストウィンドウ風） */
 #log {
   position: absolute;
@@ -193,7 +209,36 @@ html, body {
     linear-gradient(180deg, #05060f 0%, #0a0c28 60%, #1a0c30 100%);
   cursor: pointer;
   text-align: center;
+  overflow: hidden;
+  z-index: 6;
 }
+/* 星空（2層でパララックスにきらめく） */
+#title::before, #title::after {
+  content: '';
+  position: absolute;
+  width: 2px; height: 2px;
+  border-radius: 50%;
+  background: transparent;
+  pointer-events: none;
+}
+#title::before {
+  box-shadow:
+    8vw 12vh 0 #fff, 22vw 6vh 0 #cdd6ff, 34vw 18vh 0 #fff, 47vw 9vh 0 #ffe9b0,
+    61vw 15vh 0 #fff, 74vw 7vh 0 #cdd6ff, 88vw 13vh 0 #fff, 15vw 28vh 0 #ffe9b0,
+    41vw 30vh 0 #fff, 68vw 26vh 0 #cdd6ff, 91vw 31vh 0 #fff, 5vw 46vh 0 #cdd6ff,
+    83vw 48vh 0 #ffe9b0, 12vw 66vh 0 #fff, 93vw 68vh 0 #cdd6ff, 27vw 82vh 0 #fff,
+    72vw 86vh 0 #ffe9b0, 52vw 78vh 0 #cdd6ff;
+  animation: twinkle 2.6s steps(2) infinite;
+}
+#title::after {
+  box-shadow:
+    13vw 9vh 0 #8890c8, 28vw 22vh 0 #8890c8, 55vw 5vh 0 #8890c8, 79vw 19vh 0 #8890c8,
+    95vw 8vh 0 #8890c8, 8vw 36vh 0 #8890c8, 63vw 34vh 0 #8890c8, 88vw 40vh 0 #8890c8,
+    18vw 55vh 0 #8890c8, 90vw 58vh 0 #8890c8, 6vw 78vh 0 #8890c8, 38vw 88vh 0 #8890c8,
+    60vw 92vh 0 #8890c8, 82vw 76vh 0 #8890c8;
+  animation: twinkle 3.4s steps(2) infinite 1.2s;
+}
+@keyframes twinkle { 50% { opacity: 0.25; } }
 #title-art {
   display: flex; gap: 14px; margin-bottom: 6px;
   image-rendering: pixelated;
@@ -207,8 +252,10 @@ html, body {
 @keyframes titlebob { 50% { transform: translateY(-5px); } }
 .title-logo {
   font-size: 56px; letter-spacing: 8px; color: var(--accent);
-  text-shadow: 4px 4px 0 #b03000, 8px 8px 0 rgba(0,0,0,0.5);
+  text-shadow: 4px 4px 0 #b03000, 8px 8px 0 rgba(0,0,0,0.5), 0 0 32px rgba(255,226,74,0.35);
+  animation: logofloat 2.4s ease-in-out infinite;
 }
+@keyframes logofloat { 50% { transform: translateY(-6px); } }
 .title-sub { font-size: 16px; color: var(--text); letter-spacing: 2px; }
 .title-start {
   margin-top: 20px; font-size: 20px; color: #fff;
