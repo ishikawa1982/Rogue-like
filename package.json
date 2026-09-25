@@ -1,7 +1,7 @@
 {
   "name": "rogue-like",
-  "version": "0.1.0",
-  "description": "風来のシレン風 ローグライクRPG (Web/Canvas)",
+  "version": "2.0.0",
+  "description": "アルカナの迷宮 - 王道ファンタジーのローグライクRPG (Web/Canvas)",
   "type": "module",
   "scripts": {
     "start": "python3 -m http.server 8000",
