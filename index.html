@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>ドキドキ洞窟 - ローグライクRPG</title>
+  <title>アルカナの迷宮 - ローグライクRPG</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DotGothic16&display=swap" rel="stylesheet" />
@@ -14,12 +14,12 @@
     <!-- 上部ステータスバー -->
     <header id="topbar">
       <div class="stat-group">
-        <span class="floor-name">ドキドキ洞窟</span>
+        <span id="hud-area" class="floor-name">いにしえの石回廊</span>
         <span id="hud-floor" class="floor-num">1F</span>
       </div>
       <div class="stat-group">
         <span class="label">HP</span>
-        <span id="hud-hp" class="value">35/35</span>
+        <span id="hud-hp" class="value">30/30</span>
         <div class="bar"><div id="hud-hp-bar" class="bar-fill hp"></div></div>
       </div>
       <div class="stat-group">
@@ -34,7 +34,7 @@
         <span class="label">ちから</span><span id="hud-str" class="value">8/8</span>
       </div>
       <div class="stat-group small">
-        <span class="label">$</span><span id="hud-gold" class="value">0</span>
+        <span class="label">G</span><span id="hud-gold" class="value">0</span>
       </div>
     </header>
 
@@ -48,29 +48,47 @@
 
         <!-- 持ち物メニュー -->
         <div id="inventory" class="hidden">
-          <div class="inv-header">もちもの <span class="inv-hint">↑↓:選択　Enter:使う/装備　t:置く　i:閉じる</span></div>
+          <div class="inv-header">
+            <span>もちもの <span id="inv-count" class="inv-count">0/20</span></span>
+            <span class="inv-hint">↑↓:選ぶ Enter:決定 Esc:閉じる</span>
+            <button id="inv-close" class="inv-close" title="閉じる">✕</button>
+          </div>
           <div id="inv-list"></div>
+          <div id="inv-detail"></div>
+          <div id="action-menu" class="hidden"></div>
+        </div>
+
+        <!-- 確認・選択ダイアログ -->
+        <div id="dialog" class="hidden">
+          <div id="dialog-text"></div>
+          <div id="dialog-list"></div>
         </div>
 
         <!-- ゲームオーバー/クリア -->
         <div id="overlay" class="hidden">
           <h1 id="overlay-title">GAME OVER</h1>
           <p id="overlay-sub"></p>
-          <p class="overlay-restart">Enter / タップで もう一度</p>
+          <p id="overlay-detail"></p>
+          <p class="overlay-restart">Enter / タップで タイトルへ</p>
         </div>
 
         <!-- タイトル画面 -->
         <div id="title">
           <div id="title-art"></div>
-          <h1 class="title-logo">ドキドキ洞窟</h1>
-          <p class="title-sub">― ふしぎの どうくつ ローグライク ―</p>
-          <p class="title-start">PRESS ENTER / TAP TO START</p>
+          <h1 class="title-logo" id="title-logo">アルカナの迷宮</h1>
+          <p class="title-sub" id="title-sub">〜最深部に眠る秘宝〜</p>
+          <p class="title-start" id="title-start">よみこみ中…</p>
           <div class="title-help">
-            <p>矢印 / WASD / テンキー で 8方向に 移動</p>
-            <p>敵に ぶつかって こうげき ・ <b>i</b> もちもの ・ <b>Enter</b> 階段を おりる</p>
-            <p>満腹度に 気をつけて 最深部(12F)を めざそう！</p>
+            <p>矢印 / WASD / テンキー で 8方向に 移動・敵に ぶつかって こうげき</p>
+            <p><b>i</b> もちもの ・ <b>Enter</b> 階段を おりる ・ <b>.</b> 足踏み ・ <b>M</b> 音</p>
+            <p>お店・モンスターハウス・ポット・リングを 活用して 12Fの 秘宝を めざそう！</p>
           </div>
+          <p class="title-version" id="title-version">Ver 2.0.0</p>
+          <p class="title-credit">Graphics: Dungeon Crawl Stone Soup tiles (CC0)</p>
         </div>
+
+        <!-- バージョン表示（常に左上） -->
+        <div id="ver-badge">Ver 2.0.0</div>
 
         <!-- ミュート切り替え -->
         <button id="btn-mute" title="音のオン/オフ (M)">🔊</button>
@@ -91,12 +109,16 @@
           <div id="hud-exp" class="side-value">5</div>
         </div>
         <div class="side-block">
-          <div class="side-title">ぶき</div>
-          <div id="hud-weapon" class="side-value small-text">バット</div>
+          <div class="side-title">武器</div>
+          <div id="hud-weapon" class="side-value small-text">なし</div>
         </div>
         <div class="side-block">
-          <div class="side-title">ぼうし</div>
-          <div id="hud-shield" class="side-value small-text">やきゅうぼう</div>
+          <div class="side-title">盾</div>
+          <div id="hud-shield" class="side-value small-text">なし</div>
+        </div>
+        <div class="side-block">
+          <div class="side-title">腕輪</div>
+          <div id="hud-ring" class="side-value small-text">なし</div>
         </div>
         <div class="side-block minimap-block">
           <div class="side-title">マップ</div>
@@ -126,7 +148,7 @@
 
     <!-- 操作ヘルプ -->
     <div id="help">
-      <strong>操作:</strong> 移動=矢印/WASD/テンキー(斜め可) ・ 足踏み=. ・ 階段=Enter ・ もちもの=i
+      <strong>操作:</strong> 移動=矢印/WASD/テンキー(斜め可) ・ 足踏み=. ・ 階段=Enter ・ もちもの=i ・ 音=M
     </div>
   </div>
 

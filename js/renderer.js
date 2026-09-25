@@ -1,16 +1,15 @@
 // =============================================================
-// renderer.js - Canvas描画（ドット絵スプライト・タイルテクスチャ）
-//   32pxドット絵のスーファミ風レンダラー。
+// renderer.js - Canvas描画（32pxタイル素材・ライティング・演出）
 //   ・タイル間のなめらか移動補間＋スムーズなカメラ追従
 //   ・松明のゆらぐ動的ライティング（明暗マップ＋暖色グロー）
 //   ・パーティクル（環境の塵・砂煙・撃破バースト・回復の光）
 //   ・方向つき斬撃スイング、ダメージ数字のポップ演出
 //   ・フロア移動のアイリスワイプ、画面フラッシュ、ビネット
 // =============================================================
-import { TILE } from './data.js';
+import { TILE, areaIndexForFloor } from './data.js';
 import {
-  getSprite, getItemSprite, getTileTexture, getDecoTexture, getTorchSprite,
-  themeForFloor, spriteExists, hash, TILE_THEMES, TILE_VARIANTS, DECO_COUNT,
+  getSprite, getHeroSprite, getItemSprite, getGoldSprite, getTileTexture, getTorchSprite,
+  hash, TILE_THEMES, TILE_VARIANTS,
 } from './sprites.js';
 
 export const TILE_SIZE = 32;
@@ -112,7 +111,7 @@ export class Renderer {
     const camX = this.snap(this.camX);
     const camY = this.snap(this.camY);
 
-    const themeIdx = themeForFloor(game.floor);
+    const themeIdx = areaIndexForFloor(game.floor);
     const theme = TILE_THEMES[themeIdx];
 
     // 表示タイル範囲
@@ -162,10 +161,9 @@ export class Renderer {
         ctx.drawImage(tex, px, py, TS, TS);
 
         if (tile !== TILE.WALL) {
-          // 床の装飾（部屋の床のみ・まばら）
-          if (tile === TILE.FLOOR && hash(mx * 13 + 5, my * 17 + 3) < 0.10) {
-            const idx = Math.floor(hash(mx * 29 + 1, my * 31 + 7) * DECO_COUNT);
-            ctx.drawImage(getDecoTexture(themeIdx, idx), px, py, TS, TS);
+          // お店の床はじゅうたん
+          if (d.shopRoom && d.inRoom(d.shopRoom, mx, my)) {
+            ctx.drawImage(getSprite('rug'), px, py, TS, TS);
           }
           // 壁ぎわの接地影（上に壁があれば落ち影で立体感）
           if (d.get(mx, my - 1) === TILE.WALL) {
@@ -183,15 +181,15 @@ export class Renderer {
             ctx.fillRect(px, py, 8, TS);
           }
         } else if (isFace && this.isTorchAt(mx, my)) {
-          // 壁面の松明（ゆらめく3フレーム）
-          const f = (torchFrame + Math.floor(hash(mx, my) * 3)) % 3;
+          // 壁面の松明（ゆらめく4フレーム）
+          const f = torchFrame + Math.floor(hash(mx, my) * 4);
           ctx.drawImage(getTorchSprite(f), px, py, TS, TS);
           if (game.visible[my][mx] || (d.inBounds(mx, my + 1) && game.visible[my + 1][mx])) {
             visibleTorches.push({ x: mx, y: my });
           }
         }
 
-        // 階段（穴＋はしご）＋うっすら光る
+        // 下り階段
         if (tile === TILE.STAIRS) {
           ctx.drawImage(getSprite('stairs'), px, py, TS, TS);
         }
@@ -200,30 +198,40 @@ export class Renderer {
 
     // ---- 床落ちアイテム（ふわふわ浮遊＋足元の影）----
     for (const g of game.groundItems) {
-      if (!game.visible[g.y] || !game.visible[g.y][g.x]) continue;
+      const vis = game.visible[g.y] && game.visible[g.y][g.x];
+      if (!vis && !(game.mapRevealed && game.explored[g.y][g.x])) continue;
       const px = this.snap(g.x * TS - camX);
       const py = this.snap(g.y * TS - camY);
-      const bob = Math.sin(now / 300 + g.x * 7 + g.y * 13) * 2;
-      const spr = g.gold !== undefined ? getSprite('coin') : getItemSprite(g.item);
+      const bob = vis ? Math.sin(now / 300 + g.x * 7 + g.y * 13) * 2 : 0;
+      const spr = g.gold !== undefined ? getGoldSprite(g.gold) : getItemSprite(g.item);
+      if (!vis) ctx.globalAlpha = 0.45;
       this.drawShadow(px, py, 0.24, 1 - bob * 0.06);
       ctx.drawImage(spr, px, this.snap(py - 3 + bob), TS, TS);
+      ctx.globalAlpha = 1;
     }
 
     // ---- エンティティ（y座標でソートして重なりを正しく）----
     const drawables = [];
+    const sense = game.player.hasRing('sense');
     for (const m of game.monsters) {
-      if (!game.visible[m.y] || !game.visible[m.y][m.x]) continue;
+      const vis = game.visible[m.y] && game.visible[m.y][m.x];
+      if (!vis && !sense) continue;
       drawables.push(m);
     }
     drawables.push(game.player);
     drawables.sort((a, b) => this.entityPos(a, now).y - this.entityPos(b, now).y);
     for (const e of drawables) {
       const isPlayer = e === game.player;
-      this.drawEntity(e, isPlayer ? 'player' : (e.sprite || e.id), camX, camY, now);
-      if (!isPlayer && e.hp < e.maxHp) {
-        const ep = this.entityPos(e, now);
+      const vis = isPlayer || (game.visible[e.y] && game.visible[e.y][e.x]);
+      const spr = isPlayer ? getHeroSprite(e) : getSprite(e.sprite);
+      let alpha = vis ? 1 : 0.4;
+      if (!isPlayer && e.special === 'phase') alpha *= 0.75; // ゴーストは半透明
+      this.drawEntity(e, spr, camX, camY, now, alpha);
+      const ep = this.entityPos(e, now);
+      if (!isPlayer && vis && e.hp < e.maxHp) {
         this.drawHpBar(e, ep.x * TS - camX, ep.y * TS - camY, dt);
       }
+      if (!isPlayer && vis && e.asleep) this.drawSleep(ep.x * TS - camX, ep.y * TS - camY, now, e);
     }
 
     // ---- パーティクル（塵・砂煙・火花など）----
@@ -372,7 +380,7 @@ export class Renderer {
   // -----------------------------------------------------------
   // キャラ1体を描画（補間移動・ホップ・踏み込み・被弾点滅つき）
   // -----------------------------------------------------------
-  drawEntity(e, spriteKey, camX, camY, now) {
+  drawEntity(e, spr, camX, camY, now, alpha = 1) {
     const ep = this.entityPos(e, now);
     let px = ep.x * TS - camX;
     let py = ep.y * TS - camY;
@@ -389,43 +397,48 @@ export class Renderer {
       }
     }
 
-    // 歩行フレーム：移動補間中＋少し余韻。1歩ごとに小さくホップ
-    const walking = now - (e.movedAt || 0) < Math.max(MOVE_MS, 220);
-    const frame = walking ? (e.stepFrame ? 2 : 1) : 0;
-    const hop = ep.t < 1 ? Math.sin(Math.PI * ep.t) * 2.5 : 0;
+    // 1歩ごとに小さくホップ（歩きの足どり）。待機中はゆっくり呼吸
+    const hop = ep.t < 1 ? Math.sin(Math.PI * ep.t) * 3 : 0;
+    const breathe = e.asleep ? 0 : Math.max(0, Math.sin(now / 420 + (e.x * 7 + e.y * 3))) * 0.8;
 
-    // 向きに応じてスプライト/反転を決定
-    //   down  : 正面（基本スプライト）
-    //   up    : 背面（専用 _up があれば使用、なければ顔を消した自動背面）
-    //   side  : 横向き（専用 _side があれば使用＋左右反転、なければ正面を反転）
-    const dir = e.dir || 'down';
-    let spr, flip = false;
-    if (dir === 'up') {
-      if (spriteExists(spriteKey + '_up')) spr = getSprite(spriteKey + '_up', null, frame);
-      else spr = getSprite(spriteKey, null, frame, 'back');
-    } else if (dir === 'side') {
-      flip = e.facing < 0;
-      const sideKey = spriteKey + '_side';
-      spr = spriteExists(sideKey) ? getSprite(sideKey, null, frame) : getSprite(spriteKey, null, frame);
-    } else {
-      spr = getSprite(spriteKey, null, frame);
-    }
+    // 素材の絵は左向き（または正面）なので、右へ向いたら左右反転する
+    const flip = e.facing > 0;
 
     px = this.snap(px);
     py = this.snap(py);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = alpha;
     this.drawShadow(px, py, 0.30, 1 - hop * 0.05);
+    const sy = this.snap(py - hop - breathe);
+    this.drawSprite(spr, px, sy, flip);
 
     // 被弾点滅（白くフラッシュ）
     const hurt = now - (e.hurtAt || 0) < 160;
-    this.drawSprite(spr, px, this.snap(py - hop), flip);
     if (hurt) {
-      const ctx = this.ctx;
-      ctx.save();
-      ctx.globalAlpha = 0.6;
+      ctx.globalAlpha = 0.6 * alpha;
       ctx.globalCompositeOperation = 'lighter';
-      this.drawSprite(spr, px, this.snap(py - hop), flip);
-      ctx.restore();
+      this.drawSprite(spr, px, sy, flip);
     }
+    ctx.restore();
+  }
+
+  // 眠っている敵の「Zzz」
+  drawSleep(px, py, now, e) {
+    const ctx = this.ctx;
+    const t = ((now / 900) + (e.x * 0.37 + e.y * 0.61)) % 1;
+    ctx.save();
+    ctx.globalAlpha = Math.sin(Math.PI * t) * 0.9;
+    ctx.font = 'bold 12px "DotGothic16", monospace';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#000';
+    ctx.fillStyle = '#bfe0ff';
+    const x = px + TS * 0.78 + t * 4;
+    const y = py + 4 - t * 10;
+    ctx.strokeText('z', x, y);
+    ctx.fillText('z', x, y);
+    ctx.restore();
   }
 
   drawSprite(spr, px, py, flip = false) {
@@ -494,6 +507,25 @@ export class Renderer {
             x: cx + (Math.random() - 0.5) * 26, y: cy + 10 + Math.random() * 6,
             vx: (Math.random() - 0.5) * 8, vy: -45 - Math.random() * 45,
             ttl: 650 + Math.random() * 300, size: 2 + (i % 2), color: 'rgba(255,225,90,', a0: 1, twinkle: true,
+          });
+        }
+      } else if (e.type === 'bolt' && e.kind === 'fire') {
+        // 炎の粉
+        for (let i = 0; i < 18; i++) {
+          const k = Math.random();
+          this.addParticle({
+            x: lerp(cx, e.tx * TS + TS / 2, k), y: lerp(cy, e.ty * TS + TS / 2, k),
+            vx: (Math.random() - 0.5) * 30, vy: -20 - Math.random() * 30,
+            ttl: 300 + Math.random() * 300, size: 2 + (i % 2),
+            color: Math.random() < 0.5 ? 'rgba(255,170,60,' : 'rgba(255,90,30,', a0: 0.9,
+          });
+        }
+      } else if (e.type === 'thunder') {
+        for (let i = 0; i < 10; i++) {
+          const a = Math.random() * Math.PI * 2;
+          this.addParticle({
+            x: cx, y: cy, vx: Math.cos(a) * 70, vy: Math.sin(a) * 70 - 20,
+            g: 120, ttl: 300 + Math.random() * 200, size: 2, color: 'rgba(255,245,160,', a0: 1,
           });
         }
       } else if (e.type === 'slash') {
@@ -601,7 +633,7 @@ export class Renderer {
       const cx = e.x * TS + TS / 2 - camX;
       const cy = e.y * TS + TS / 2 - camY;
 
-      if (e.type === 'damage' || e.type === 'heal') {
+      if (e.type === 'damage' || (e.type === 'heal' && !e.silent)) {
         const rise = t * 22;
         const alpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
         // 出現時にポンと拡大（easeOutBack風）
@@ -671,6 +703,71 @@ export class Renderer {
           ctx.arc(cx, cy, TS * 0.35 * (1 - t / 0.25), 0, Math.PI * 2);
           ctx.fill();
         }
+        ctx.restore();
+
+      } else if (e.type === 'bolt') {
+        // 飛び道具（矢・炎・魔法弾・稲妻）：発射元→目標へ飛ぶ
+        const sx = e.x * TS + TS / 2 - camX, sy = e.y * TS + TS / 2 - camY;
+        const tx = e.tx * TS + TS / 2 - camX, ty = e.ty * TS + TS / 2 - camY;
+        const hx = lerp(sx, tx, t), hy = lerp(sy, ty, t);
+        const ang = Math.atan2(ty - sy, tx - sx);
+        ctx.save();
+        if (e.kind === 'arrow') {
+          ctx.translate(hx, hy);
+          ctx.rotate(ang);
+          ctx.fillStyle = '#d8c090';
+          ctx.fillRect(-10, -1, 16, 2);
+          ctx.fillStyle = '#e8e8f0';
+          ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(4, -3); ctx.lineTo(4, 3); ctx.fill();
+          ctx.fillStyle = '#c04838';
+          ctx.fillRect(-11, -3, 3, 2); ctx.fillRect(-11, 1, 3, 2);
+        } else if (e.kind === 'lightning') {
+          ctx.strokeStyle = '#fff8b0';
+          ctx.shadowColor = '#ffe24a';
+          ctx.shadowBlur = 12;
+          ctx.lineWidth = 3;
+          ctx.globalAlpha = 1 - t * 0.5;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          const seg = 7;
+          for (let i = 1; i <= seg; i++) {
+            const k = i / seg;
+            const jx = i === seg ? 0 : (Math.random() - 0.5) * 12;
+            const jy = i === seg ? 0 : (Math.random() - 0.5) * 12;
+            ctx.lineTo(lerp(sx, tx, k) + jx, lerp(sy, ty, k) + jy);
+          }
+          ctx.stroke();
+        } else {
+          const fire = e.kind === 'fire';
+          const r = fire ? 9 + t * 5 : 6;
+          const g = ctx.createRadialGradient(hx, hy, 0, hx, hy, r * 1.8);
+          g.addColorStop(0, fire ? 'rgba(255,250,200,1)' : 'rgba(240,230,255,1)');
+          g.addColorStop(0.4, fire ? 'rgba(255,140,40,0.9)' : 'rgba(150,120,255,0.9)');
+          g.addColorStop(1, fire ? 'rgba(200,40,0,0)' : 'rgba(80,60,220,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(hx, hy, r * 1.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+
+      } else if (e.type === 'thunder') {
+        // 空から落ちる雷
+        const alpha = 1 - t;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = '#fffbd0';
+        ctx.shadowColor = '#ffe24a';
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        let x = cx + (Math.random() - 0.5) * 6;
+        ctx.moveTo(x, cy - TS * 3);
+        for (let i = 1; i <= 6; i++) {
+          x = cx + (i === 6 ? 0 : (Math.random() - 0.5) * 14);
+          ctx.lineTo(x, cy - TS * 3 + (TS * 3) * (i / 6));
+        }
+        ctx.stroke();
         ctx.restore();
 
       } else if (e.type === 'levelup') {
@@ -783,6 +880,7 @@ export class Renderer {
     const scale = Math.min((mc.width - pad * 2) / d.w, (mc.height - pad * 2) / d.h);
     const ox = pad + ((mc.width - pad * 2) - d.w * scale) / 2;
     const oy = pad + ((mc.height - pad * 2) - d.h * scale) / 2;
+    const colors = TILE_THEMES[areaIndexForFloor(game.floor)].minimap;
     ctx.clearRect(0, 0, mc.width, mc.height);
     ctx.fillStyle = '#060810';
     ctx.fillRect(0, 0, mc.width, mc.height);
@@ -798,24 +896,29 @@ export class Renderer {
           // 階段は金色で明滅
           const blink = 0.6 + 0.4 * Math.sin(now / 250);
           ctx.fillStyle = `rgba(255,220,80,${blink.toFixed(2)})`;
+        } else if (d.shopRoom && d.inRoom(d.shopRoom, x, y)) {
+          ctx.fillStyle = lit ? '#c86a58' : '#8c4a40'; // お店
         } else if (t === TILE.CORRIDOR) {
-          ctx.fillStyle = lit ? '#4a5270' : '#343a52';
+          ctx.fillStyle = lit ? colors.corridorLit : colors.corridor;
         } else {
-          ctx.fillStyle = lit ? '#6a80b8' : '#4a5a86';
+          ctx.fillStyle = lit ? colors.floorLit : colors.floor;
         }
         ctx.fillRect(ox + x * scale, oy + y * scale, cell, cell);
       }
     }
-    // アイテム（可視のみ・シアン）
-    ctx.fillStyle = '#4fd8e8';
+    // アイテム（見えているもの、地図の巻物を読んだら全部）
     for (const g of game.groundItems) {
-      if (!game.visible[g.y] || !game.visible[g.y][g.x]) continue;
+      const vis = game.visible[g.y] && game.visible[g.y][g.x];
+      if (!vis && !(game.mapRevealed && game.explored[g.y][g.x])) continue;
+      ctx.fillStyle = g.gold !== undefined ? '#ffd24a' : '#4fd8e8';
       ctx.fillRect(ox + g.x * scale, oy + g.y * scale, cell, cell);
     }
-    // モンスター（可視のみ・赤）
-    ctx.fillStyle = '#ef5350';
+    // モンスター（見えているもの、サーチリングなら全部）
+    const sense = game.player.hasRing('sense');
     for (const m of game.monsters) {
-      if (!game.visible[m.y] || !game.visible[m.y][m.x]) continue;
+      const vis = game.visible[m.y] && game.visible[m.y][m.x];
+      if (!vis && !sense) continue;
+      ctx.fillStyle = m.peaceful ? '#ffe9a0' : vis ? '#ef5350' : 'rgba(239,83,80,0.65)';
       ctx.fillRect(ox + m.x * scale, oy + m.y * scale, cell, cell);
     }
     // プレイヤー（白リング＋黄色で脈動）

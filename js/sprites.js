@@ -1,960 +1,188 @@
 // =============================================================
-// sprites.js - ドット絵スプライト
-//   コード内のピクセルマップからオフスクリーンcanvasを生成しキャッシュ。
-//   キャラ・アイテムは32x32（w/h指定）でMOTHER2/EarthBound風。outline:true
-//   で塗りの周囲に自動でアウトラインを描き、陰影付きの高精細な見た目にする。
-//   タイル(床/通路/壁)も32x32でプロシージャル生成（石畳・レンガ・岩肌）。
+// sprites.js - 画像素材（タイルアトラス）の読み込みとスプライト取得
+//   素材は Dungeon Crawl Stone Soup の CC0 タイル（assets/tiles.png）。
+//   tools/build_assets.py でアトラスと対応表(js/atlas.js)を生成している。
 // =============================================================
+import { ATLAS, ATLAS_COLS, ATLAS_TILE } from './atlas.js';
+import { isKnown, lookOf } from './items.js';
 
-// ---- 色ユーティリティ ----
-function darken(hex, f = 0.65) {
-  return shade(hex, f);
-}
+const TS = ATLAS_TILE;
+let atlasImage = null;
 
-// 明度を係数fで変える（f<1で暗く、f>1で明るく）。255でクランプ。
-function shade(hex, f) {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.min(255, Math.round(((n >> 16) & 255) * f));
-  const g = Math.min(255, Math.round(((n >> 8) & 255) * f));
-  const b = Math.min(255, Math.round((n & 255) * f));
-  return `rgb(${r},${g},${b})`;
-}
-
-// ---- スプライト定義（rows: 16文字×16行, palette: 文字→色） ----
-// 'T' = 装備色などで動的に着色（TINT）、'U' = その暗色（TINT_DARK）
-export const SPRITE_DEFS = {
-  // ===== プレイヤー：赤い帽子の少年 =====
-  player: {
-    w: 32, h: 32, outline: true,
-    palette: { r: '#e8463a', R: '#c22a1f', D: '#6e1d14', s: '#f7c89a', S: '#e0a877', e: '#22202a', m: '#b05a44', b: '#2f6fd8', B: '#2050a8', y: '#ffd24a', p: '#26305f', k: '#d83a3a', w: '#f4f4f4' },
-    rows: [
-      '................................',
-      '...........rrrrrrrrrr...........',
-      '.........rrrrrrrrrrrrrr.........',
-      '........rrrrrrrrrrrrrrrr........',
-      '.......rrrrrrrrrrrrrrrrrr.......',
-      '.......rRRRRRRRRRRRRRRRRr.......',
-      '.......RRRRRRRRRRRRRRRRRR.......',
-      '........ssssssssssssssssDDDD....',
-      '........ssssssssssssssss........',
-      '........ssseesssssseesss........',
-      '........ssseesssssseesss........',
-      '........ssssssssssssssss........',
-      '........ssssssmmmmssssss........',
-      '........ssssssssssssssss........',
-      '........sSssssssssssssSs........',
-      '.........ssssssssssssss.........',
-      '..........ssssssssssss..........',
-      '......bbbbbbbbbbbbbbbbbbbb......',
-      '......byyyyyyyyyyyyyyyyyyb......',
-      '......bbbbbbbbbbbbbbbbbbbb......',
-      '......byyyyyyyyyyyyyyyyyyb......',
-      '......bbbbbbbbbbbbbbbbbbbb......',
-      '......ByyyyyyyyyyyyyyyyyyB......',
-      '.......BBBBBBBBBBBBBBBBBB.......',
-      '.......ssBBBBBBBBBBBBBBss.......',
-      '........pppppppppppppppp........',
-      '........pppppppppppppppp........',
-      '........pppppp....pppppp........',
-      '........ssssss....ssssss........',
-      '........ssssss....ssssss........',
-      '........kkkkkk....kkkkkk........',
-      '........wwwwww....wwwwww........',
-    ],
-  },
-
-  // ===== うろつきキノコ =====
-  kinoko: {
-    w: 32, h: 32, outline: true, faceChars: 'eo', // 背面では目(e)と口(o)だけ消す。カサ(m)は残す
-    palette: { m: '#e8504a', M: '#b8332c', w: '#fdeaea', t: '#efd9b0', T: '#c9a877', e: '#2a2530', o: '#a8302a', k: '#7a3a34', f: '#d8b888', F: '#b89460' },
-    rows: [
-      '................................',
-      '...........mmmmmmmmmm...........',
-      '........mmmmmmmmmmmmmmmm........',
-      '......mmmmmmmmmmmmmmmmmmmm......',
-      '.....mmmmmmmmmmmmmmmmmmmmmm.....',
-      '....mmmmmmmmmmmmmmmmmmmmmmmm....',
-      '....mmmmwwwmmmmmmmwwwmmmmmmm....',
-      '...mmmmmmmmmmmmmmmmmmmmmmmmmm...',
-      '...mmmmwwwwmmmmmmmmmwwwwmmmmm...',
-      '...mmmmmmmmmmmmmmmmmmmmmmmmmm...',
-      '....MMMMMMMMMMMMMMMMMMMMMMMM....',
-      '.....MMMMMMMMMMMMMMMMMMMMMM.....',
-      '........kkkkkkkkkkkkkkkk........',
-      '..........tttttttttttt..........',
-      '..........tteetttteett..........',
-      '..........tteetttteett..........',
-      '..........tttttttttttt..........',
-      '..........ttttooootttt..........',
-      '.........tttttttttttttt.........',
-      '.........tttttttttttttt.........',
-      '.........tTttttttttttTt.........',
-      '.........tttttttttttttt.........',
-      '..........tttttttttttt..........',
-      '..........tttttttttttt..........',
-      '..........tTTTTTTTTTTt..........',
-      '...........tttttttttt...........',
-      '...........ffff..ffff...........',
-      '...........ffff..ffff...........',
-      '...........FFFF..FFFF...........',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== ゼリーくん =====
-  jelly: {
-    w: 32, h: 32, outline: true,
-    palette: { g: '#46c8b2', G: '#2f9a86', d: '#1f7a68', w: '#c8f4ea', E: '#15201e', m: '#0d4f44' },
-    rows: [
-      '................................',
-      '................................',
-      '............gggggggg............',
-      '.........gggggggggggggg.........',
-      '.......gggggggggggggggggg.......',
-      '......gggggggggggggggggggg......',
-      '.....wwgggggggggggggggggggg.....',
-      '.....wggggggggggggggggggggg.....',
-      '....gggggggggggggggggggggggg....',
-      '....gggggEEggggggggggEEggggg....',
-      '....gggggEEggggggggggEEggggg....',
-      '....gggggggggggggggggggggggg....',
-      '....ggggggggmmmmmmmmgggggggg....',
-      '....gggggggggggggggggggggggg....',
-      '...gggggggggggggggggggggggggg...',
-      '...gggggggggggggggggggggggggg...',
-      '...gggggggggggggggggggggggggg...',
-      '...dggggggggggggggggggggggggd...',
-      '...gggggggggggggggggggggggggg...',
-      '....gggggggggggggggggggggggg....',
-      '....GGGGGGGGGGGGGGGGGGGGGGGG....',
-      '.....GGGGGGGGGGGGGGGGGGGGGG.....',
-      '......dddddddddddddddddddd......',
-      '.......gggggggggggggggggg.......',
-      '........gggggggggggggggg........',
-      '...........gggg..gggg...........',
-      '...........GGGG..GGGG...........',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== いたずらガラス =====
-  crow: {
-    w: 32, h: 32, outline: true,
-    palette: { k: '#3a3a4c', K: '#26263a', E: '#f4f4f4', P: '#15151e', y: '#f0a838', f: '#c07820' },
-    rows: [
-      '................................',
-      '................................',
-      '.............kkkkkk.............',
-      '...........kkkkkkkkkk...........',
-      '..........kkkkkkkkkkkk..........',
-      '..........kkkEEkkkkkk...........',
-      '..........kkkEPkkkkkyyyy........',
-      '..........kkkkkkkkkkyyy.........',
-      '.........kkkkkkkkkkkk...........',
-      '........kkkkkkkkkkkkkk..........',
-      '.......kkkkkkkkkkkkkkkk.........',
-      '......kkkkkkkkkkkkkkkkkk........',
-      '......kkkkkkkkkkkkkkkkkk........',
-      '.....kkkkkkkkkkkkkkkkkkkk.......',
-      '.....kkkkkkkkkkkkkkkkkkkk.......',
-      '.....KKKKkkkkkkkkkkkkKKKK.......',
-      '......KKKkkkkkkkkkkkkKKK........',
-      '.......kkkkkkkkkkkkkkkk.........',
-      '........kkkkkkkkkkkkkk..........',
-      '.........kkkkkkkkkkkk...........',
-      '..........kkkkkkkkkk............',
-      '...........kkkkkkkk.............',
-      '............kkkkkk..............',
-      '...........ff....ff.............',
-      '...........ff....ff.............',
-      '..........fff....fff............',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== みならいコック =====
-  cook: {
-    w: 32, h: 32, outline: true,
-    palette: { w: '#f8f8f8', W: '#d2d2dc', s: '#f7c89a', S: '#e0a877', e: '#2a2530', m: '#b05a44', d: '#3a3a52', k: '#202030', a: '#e8e8ee', P: '#9aa0ac' },
-    rows: [
-      '................................',
-      '..........wwwwwwwwwwww..........',
-      '........wwwwwwwwwwwwwwww........',
-      '.......wwwwwwwwwwwwwwwwww.......',
-      '.......wwwwwwwwwwwwwwwwww.......',
-      '........wwwwwwwwwwwwwwww........',
-      '.........WWWWWWWWWWWWWW.........',
-      '..........ssssssssssss..........',
-      '..........sseesssseess..........',
-      '..........sseesssseess..........',
-      '..........ssssssssssss..........',
-      '..........sssssmmsssss..........',
-      '...........ssssssssss...........',
-      '.........aaaaaaaaaaaaaa.........',
-      '........aaaaaaaaaaaaaaaa........',
-      '........aaaaaaaaaaaaaaaa........',
-      '........aaaaPPPPPPPPaaaa........',
-      '........aaaaPPPPPPPPaaaa........',
-      '........aaaaPPPPPPPPaaaa........',
-      '........saaaaaaaaaaaaaas........',
-      '.......sssaaaaaaaaaaaasss.......',
-      '.......ss.aaaaaaaaaaaa.ss.......',
-      '..........aaaaaaaaaaaa..........',
-      '..........dddddddddddd..........',
-      '..........dddddddddddd..........',
-      '..........dddd..dddd............',
-      '..........dddd..dddd............',
-      '..........kkkk..kkkk............',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== ツッパリこぞう =====
-  punk: {
-    w: 32, h: 32, outline: true,
-    palette: { h: '#48c848', H: '#2f9a2f', s: '#f7c89a', S: '#e0a877', e: '#2a2530', m: '#b05a44', j: '#3a3a52', J: '#262638', d: '#5a3420', k: '#202020' },
-    rows: [
-      '................................',
-      '..............hhhh..............',
-      '............hhhhhhhh............',
-      '..........hhhhhhhhhhhh..........',
-      '.........hhhhhhhhhhhhhh.........',
-      '........hhhHHHhhhhHHHhhh........',
-      '........HHHsssssssssssH.........',
-      '..........ssssssssssss..........',
-      '..........sseesssseess..........',
-      '..........sseesssseess..........',
-      '..........ssssssssssss..........',
-      '..........sssmmmmmssss..........',
-      '...........ssssssssss...........',
-      '.........jjjjjjjjjjjjjj.........',
-      '........jjjjjjjjjjjjjjjj........',
-      '........jjjJJJJJJJJJJjjj........',
-      '........jjjJJJJJJJJJJjjj........',
-      '........sjjJJJJJJJJJJjjs........',
-      '.......sssjjjjjjjjjjjjsss.......',
-      '.......ss.jjjjjjjjjjjj.ss.......',
-      '..........jjjjjjjjjjjj..........',
-      '..........dddddddddddd..........',
-      '..........dddddddddddd..........',
-      '..........dddd..dddd............',
-      '..........dddd..dddd............',
-      '..........kkkk..kkkk............',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== うちゅうじんグレイ =====
-  alien: {
-    w: 32, h: 32, outline: true,
-    palette: { a: '#c6d4d2', A: '#9aacaa', E: '#10204e', b: '#7f9b97' },
-    rows: [
-      '................................',
-      '..........aaaaaaaaaaaa..........',
-      '........aaaaaaaaaaaaaaaa........',
-      '.......aaaaaaaaaaaaaaaaaa.......',
-      '......aaaaaaaaaaaaaaaaaaaa......',
-      '......aaaaaaaaaaaaaaaaaaaa......',
-      '......aaaEEEEaaaaaaEEEEaaa......',
-      '......aaEEEEEEaaaaEEEEEEaa......',
-      '......aaaEEEEaaaaaaEEEEaaa......',
-      '.......aaaaaaaaaaaaaaaaaa.......',
-      '........aaaaaaaaaaaaaaaa........',
-      '.........aaaaaaaaaaaaaa.........',
-      '..........AAAaaaaaaAAA..........',
-      '............aaaaaaaa............',
-      '...........aaaaaaaaaa...........',
-      '..........aaaaaaaaaaaa..........',
-      '.........aaaaaaaaaaaaaa.........',
-      '........baaaaaaaaaaaaaab........',
-      '.......baaaaaaaaaaaaaaaab.......',
-      '.......baaaaaaaaaaaaaaaab.......',
-      '........aaaaaaaaaaaaaaaa........',
-      '.........aaaaaaaaaaaaaa.........',
-      '..........aaaaaaaaaaaa..........',
-      '..........aaaaaaaaaaaa..........',
-      '..........aaaa..aaaa............',
-      '..........aaaa..aaaa............',
-      '..........AAAA..AAAA............',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== ガラクタロボ =====
-  robot: {
-    w: 32, h: 32, outline: true,
-    palette: { m: '#aab6c6', M: '#7a8696', E: '#e83020', G: '#ffd840', k: '#3a4250', a: '#9aa6b6' },
-    rows: [
-      '................................',
-      '...............k................',
-      '..............kkk...............',
-      '..............kGk...............',
-      '..........mmmmmmmmmmmm..........',
-      '..........mmmmmmmmmmmm..........',
-      '..........mEEmmmmmmEEm..........',
-      '..........mEEmmmmmmEEm..........',
-      '..........mmmmmmmmmmmm..........',
-      '..........mmmmkkkkmmmm..........',
-      '..........MMMMMMMMMMMM..........',
-      '........aa.mmmmmmmmmm.aa........',
-      '.......aaa.mmmmmmmmmm.aaa.......',
-      '.......aa..mGGmmmmGGm..aa.......',
-      '...........mmmmmmmmmm...........',
-      '..........mmmmmmmmmmmm..........',
-      '..........mmmGGGGGGmmm..........',
-      '..........mmmmmmmmmmmm..........',
-      '..........MMMMMMMMMMMM..........',
-      '..........mmmmmmmmmmmm..........',
-      '..........MMMMMMMMMMMM..........',
-      '..........mmmm..mmmm............',
-      '..........mmmm..mmmm............',
-      '..........MMMM..MMMM............',
-      '.........kkkkk..kkkkk...........',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== サイケなトカゲ =====
-  lizard: {
-    w: 32, h: 32, outline: true,
-    palette: { g: '#5ac85a', G: '#3a9a3a', p: '#c050d0', P: '#9a3aa8', E: '#ffe040', e: '#202a20', m: '#1e4e1e' },
-    rows: [
-      '................................',
-      '.........p..........p...........',
-      '........ppp........ppp..........',
-      '.........gggggggggggg...........',
-      '.......gggggggggggggggg.........',
-      '......gggggggggggggggggg........',
-      '......ggEEEgggggggEEEggg........',
-      '......ggEEEgggggggEEEggg........',
-      '......gggggggggggggggggg........',
-      '.......ggggmmmmmmmgggg..........',
-      '......gggggggggggggggggg........',
-      '.....gggggggggggggggggggg.......',
-      '....ggppgggggggggggggppgg.......',
-      '....ggPPgggggggggggggPPgg.......',
-      '....gggggggggggggggggggggg......',
-      '...ggppgggggggggggggggppgg......',
-      '...ggPPgggggggggggggggPPgg......',
-      '...gggggggggggggggggggggg.......',
-      '....gggggggggggggggggggg........',
-      '.....ggppggggggggggggpp.........',
-      '......gggggggggggggggg..........',
-      '.......gggggggggggggg...........',
-      '........gggggggggggg............',
-      '.........gggggggggg.............',
-      '.......gggg....gggg.............',
-      '......gggg......gggg............',
-      '......GGGG......GGGG............',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== プレイヤー：横向き（右向きプロファイル。左向きは反転） =====
-  player_side: {
-    w: 32, h: 32, outline: true,
-    palette: { r: '#e8463a', R: '#c22a1f', D: '#6e1d14', s: '#f7c89a', S: '#e0a877', e: '#22202a', m: '#b05a44', b: '#2f6fd8', B: '#2050a8', y: '#ffd24a', p: '#26305f', k: '#d83a3a', w: '#f4f4f4' },
-    rows: [
-      '................................',
-      '................................',
-      '...........rrrrrrrr.............',
-      '..........rrrrrrrrrr............',
-      '.........rrrrrrrrrrrr...........',
-      '.........rRRRRRRRRRRr...........',
-      '.........RRRRRRRRRRRR...........',
-      '..........ssssssssssDDDDD.......',
-      '..........ssssssssss............',
-      '..........ssssssseess...........',
-      '..........ssssssseess...........',
-      '..........ssssssssssS...........',
-      '..........ssssssmmsss...........',
-      '..........ssssssssss............',
-      '..........ssssssssss............',
-      '...........ssssssss.............',
-      '...........ssssssss.............',
-      '.........bbbbbbbbbbbb...........',
-      '.........byyyyyyyyyyb...........',
-      '.........bbbbbbbbbbbb...........',
-      '.........byyyyyyyyyyb...........',
-      '.........bbbbbbbbbbbb...........',
-      '.........byyyyyyyyyyb...........',
-      '..........bbbbbbbbbb............',
-      '..........ssbbbbbbss............',
-      '..........pppppppppp............',
-      '..........pppppppppp............',
-      '..........ppp...pppp............',
-      '..........sss...ssss............',
-      '..........sss...ssss............',
-      '..........kkk...kkkkk...........',
-      '..........www...wwwww...........',
-    ],
-  },
-
-  // ===== アイテム：バット（武器/着色） =====
-  bat: {
-    w: 32, h: 32, outline: true,
-    palette: { b: 'TINT', B: 'TINT_DARK', h: '#7a4a24', H: '#5a3418' },
-    rows: [
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '.............bbbbbb.............',
-      '............bbbbbbbb............',
-      '............bbbbBBbb............',
-      '............bbbbBBbb............',
-      '............bbbbBBbb............',
-      '.............bbbBBb.............',
-      '.............bbbBBb.............',
-      '.............bbbBBb.............',
-      '..............bbBb..............',
-      '..............bbBb..............',
-      '..............bbBb..............',
-      '..............bbBb..............',
-      '..............hhHh..............',
-      '..............hhHh..............',
-      '..............hhHh..............',
-      '..............hhHh..............',
-      '..............hhHh..............',
-      '..............hhHh..............',
-      '..............hhHh..............',
-      '..............hhHh..............',
-      '.............hhhHh..............',
-      '.............hhHHHh.............',
-      '.............hhHHHh.............',
-      '..............hhHh..............',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== アイテム：ぼうし（防具/着色） =====
-  hat: {
-    w: 32, h: 32, outline: true,
-    palette: { c: 'TINT', C: 'TINT_DARK' },
-    rows: [
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '.............cccccc.............',
-      '...........cccccccccc...........',
-      '..........cccccccccccc..........',
-      '.........cccccccccccccc.........',
-      '........cccccccccccccccc........',
-      '........cccccccccccccccc........',
-      '.......CCCCCCCCCCCCCCCCCC.......',
-      '.......CCCCCCCCCCCCCCCCCCCCCC...',
-      '....................CCCCCCCC....',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== アイテム：くすりビン（着色） =====
-  medicine: {
-    w: 32, h: 32, outline: true,
-    palette: { h: 'TINT', H: 'TINT_DARK', k: '#9a6a2a', K: '#6a4420', g: '#dfe9f0', G: '#b8c8d2', w: '#ffffff' },
-    rows: [
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '..............kkkk..............',
-      '..............kkkk..............',
-      '..............KKKK..............',
-      '.............gggggg.............',
-      '.............gggggg.............',
-      '...........gggggggggg...........',
-      '..........gggggggggggg..........',
-      '.........gghhhhhhhhhhgg.........',
-      '.........gwhhhhhhhhhhgg.........',
-      '.........gghhhhhhhhhhgg.........',
-      '.........gghhhhhhhhhhgg.........',
-      '.........gghhhhhhhhhhgg.........',
-      '.........gghhhhhhhhhhgg.........',
-      '.........gghhhhhhhhhhgg.........',
-      '..........gghhhhhhhhgg..........',
-      '..........gggggggggggg..........',
-      '...........GGGGGGGGGG...........',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== アイテム：メモ・チラシ（着色） =====
-  memo: {
-    w: 32, h: 32, outline: true,
-    palette: { w: '#f8f1d8', W: '#cbbd95', l: 'TINT', L: 'TINT_DARK' },
-    rows: [
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '......wwwwwwwwwwwwwwwwwwww......',
-      '......wwwwwwwwwwwwwwwwwwww......',
-      '......wwllllllllllllllllww......',
-      '......wwwwwwwwwwwwwwwwwwww......',
-      '......wwllllllllllllllllww......',
-      '......wwwwwwwwwwwwwwwwwwww......',
-      '......wwllllllllllllllllww......',
-      '......wwwwwwwwwwwwwwwwwwww......',
-      '......wwllllllllllllllllww......',
-      '......wwwwwwwwwwwwwwwwwwww......',
-      '......wwllllllllllllllllww......',
-      '......wwwwwwwwwwwwwwwwwwww......',
-      '......wwllllllllllllllllww......',
-      '......wwwwwwwwwwwwwwwwwwww......',
-      '......wwllllllllllllllllww......',
-      '......wwwwwwwwwwwwwwwwwwww......',
-      '......wwllllllllllllllllww......',
-      '......wwwwwwwwwwwwwwwwwwww......',
-      '......WWWWWWWWWWWWWWWWWWWW......',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== アイテム：ハンバーガー =====
-  burger: {
-    w: 32, h: 32, outline: true,
-    palette: { u: '#eaa94a', U: '#c8842c', w: '#fff2cc', g: '#5ac038', G: '#3a9a28', p: '#a85828', P: '#7a3c18', c: '#ffd24a' },
-    rows: [
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '..........uuuuuuuuuuuu..........',
-      '........uuuuuuuuuuuuuuuu........',
-      '.......uuwuuuuwuuuuwuuuuu.......',
-      '......uuuuuuuuuuuuuuuuuuuu......',
-      '......uuuuuuuuuuuuuuuuuuuu......',
-      '......gggggggggggggggggggg......',
-      '......GGGGGGGGGGGGGGGGGGGG......',
-      '......cccccccccccccccccccc......',
-      '......pppppppppppppppppppp......',
-      '......PPPPPPPPPPPPPPPPPPPP......',
-      '......uuuuuuuuuuuuuuuuuuuu......',
-      '.......uuuuuuuuuuuuuuuuuu.......',
-      '........UUUUUUUUUUUUUUUU........',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== アイテム：ピザ =====
-  pizza: {
-    w: 32, h: 32, outline: true,
-    palette: { c: '#e0a040', C: '#b87828', y: '#f8c84a', Y: '#e0a830', r: '#d83828', R: '#a82820' },
-    rows: [
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '......cccccccccccccccccccc......',
-      '......CCCCCCCCCCCCCCCCCCCC......',
-      '.......yyyyyyyyyyyyyyyyyy.......',
-      '.......yyrryyyyyyyyrryyyy.......',
-      '.......yyrryyyyyyyyrryyyy.......',
-      '........yyyyyyyyyyyyyyyy........',
-      '........yyyyyrryyyyyyyyy........',
-      '.........yyyyyyyyyyyyyy.........',
-      '..........yyyyyyyyyyyy..........',
-      '...........yyyyyyyyyy...........',
-      '............yyyyyyyy............',
-      '.............yyyyyy.............',
-      '..............yyyy..............',
-      '...............yy...............',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== アイテム：ステッキ（着色） =====
-  stick: {
-    w: 32, h: 32, outline: true,
-    palette: { s: 'TINT', S: 'TINT_DARK', y: '#ffe24a', Y: '#e0b820', w: '#ffffff' },
-    rows: [
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '.......................y........',
-      '......................yYy.......',
-      '.......................y........',
-      '.....................yyyyy......',
-      '....................yyYYYyy.....',
-      '.....................yyYyy......',
-      '......................yYy.......',
-      '....................ss..........',
-      '...................ss...........',
-      '..................ss............',
-      '..................sS............',
-      '.................ss.............',
-      '................ss..............',
-      '...............sS...............',
-      '...............ss...............',
-      '..............ss................',
-      '.............sS.................',
-      '.............ss.................',
-      '............ss..................',
-      '...........sS...................',
-      '...........ss...................',
-      '..........ss....................',
-      '.........ss.....................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== ドル（コイン） =====
-  coin: {
-    w: 32, h: 32, outline: true,
-    palette: { y: '#ffd84a', Y: '#c89420', o: '#fff2bf', d: '#9a6e16' },
-    rows: [
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '...........yyyyyyyyyy...........',
-      '.........yyyyyyyyyyyyyy.........',
-      '........yyyyyyyyyyyyyyyy........',
-      '........yoyyyydddyyyyyyy........',
-      '.......yyyyyyyddyyyyyyyy........',
-      '.......yyyyyyyddyyyyyyyy........',
-      '......yyyyyydddddddyyyyyy.......',
-      '......yyyyyydddyyyyyyyyyy.......',
-      '......yyyyyydddddddyyyyyy.......',
-      '......yyyyyyyyyyydddyyyyy.......',
-      '......yyyyyyydddddddyyyyy.......',
-      '.......yyyyyyddyyyyyyyyy........',
-      '.......YYyyyyddyyyyyyyY.........',
-      '........YYyyydddyyyyYY..........',
-      '.........YYYYYYYYYYYY...........',
-      '...........YYYYYYYY.............',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-
-  // ===== 階段（穴＋はしご） =====
-  stairs: {
-    w: 32, h: 32, outline: true,
-    palette: { K: '#2c2018', k: '#120c08', l: '#caa050', L: '#9a7430', s: '#5a4228' },
-    rows: [
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '........KKKKKKKKKKKKKKKK........',
-      '........KkkkkkkkkkkkkkkK........',
-      '........KkllllllllllllkK........',
-      '........KkkkkkkkkkkkkkkK........',
-      '........KkllllllllllllkK........',
-      '........KkkkkkkkkkkkkkkK........',
-      '........KkllllllllllllkK........',
-      '........KkkkkkkkkkkkkkkK........',
-      '........KkllllllllllllkK........',
-      '........KkkkkkkkkkkkkkkK........',
-      '........KkllllllllllllkK........',
-      '........KkkkkkkkkkkkkkkK........',
-      '........KKKKKKKKKKKKKKKK........',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-      '................................',
-    ],
-  },
-};
-
-// 各スプライトのサイズ（未指定は16x16）
-function defW(def) { return def.w || 16; }
-function defH(def) { return def.h || 16; }
-
-// ---- 定義の整合性チェック（読み込み時に検証） ----
-for (const [key, def] of Object.entries(SPRITE_DEFS)) {
-  const w = defW(def), h = defH(def);
-  if (def.rows.length !== h) throw new Error(`sprite ${key}: rows=${def.rows.length} expected ${h}`);
-  def.rows.forEach((row, i) => {
-    if (row.length !== w) throw new Error(`sprite ${key} row${i}: len=${row.length} expected ${w} "${row}"`);
-    for (const ch of row) {
-      if (ch !== '.' && !(ch in def.palette)) throw new Error(`sprite ${key} row${i}: unknown char "${ch}"`);
-    }
+// アトラス画像を読み込む（ゲーム開始前に await する）
+export function loadAtlas(url = 'assets/tiles.png') {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { atlasImage = img; resolve(img); };
+    img.onerror = () => reject(new Error(`画像素材を 読み込めませんでした: ${url}`));
+    img.src = url;
   });
 }
 
-// ---- スプライト生成＆キャッシュ ----
+function newCanvas() {
+  const c = document.createElement('canvas');
+  c.width = TS;
+  c.height = TS;
+  return c;
+}
+
+function blit(ctx, key, alpha = 1) {
+  const i = ATLAS[key];
+  if (i === undefined || !atlasImage) return;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(atlasImage, (i % ATLAS_COLS) * TS, Math.floor(i / ATLAS_COLS) * TS, TS, TS, 0, 0, TS, TS);
+  ctx.globalAlpha = 1;
+}
+
+// ---- 1枚タイル（キャンバスにキャッシュ） ----
 const spriteCache = new Map();
-const OUTLINE = '#1a1410'; // EarthBound風の濃い輪郭線
-
-// 歩行フレーム：脚（下部の列）の片側を1px持ち上げて「片足を上げた」絵を作る。
-// side='L' で左半分、'R' で右半分の脚を持ち上げる。
-function steppedRows(rows, side, w, h) {
-  const grid = rows.map(r => r.split(''));
-  const legTop = h - 4;
-  const inSide = (x) => (side === 'L' ? x < w / 2 : x >= w / 2);
-  for (let x = 0; x < w; x++) {
-    if (!inSide(x)) continue;
-    for (let y = legTop; y < h; y++) {
-      grid[y][x] = y + 1 < h ? rows[y + 1][x] : '.';
-    }
+export function getSprite(key) {
+  let c = spriteCache.get(key);
+  if (!c) {
+    c = newCanvas();
+    blit(c.getContext('2d'), key);
+    spriteCache.set(key, c);
   }
-  return grid.map(r => r.join(''));
+  return c;
 }
 
-// 背面ビュー用：顔のパーツ（目・口・つば）を取り除き、左右の体色で埋める。
-// これで「正面」スプライトから自動的に「後ろ姿」を生成する。
-// 顔チャーはスプライトごとに def.faceChars で指定可（既定は目e/E・口m・つばD・瞳P）。
-const DEFAULT_FACE = 'eEmPD';
-function backRows(rows, w, faceStr) {
-  const FACE = new Set((faceStr || DEFAULT_FACE).split(''));
-  return rows.map((row) => {
-    const a = row.split('');
-    for (let x = 0; x < w; x++) {
-      if (!FACE.has(a[x])) continue;
-      let rep = '.';
-      for (let k = x - 1; k >= 0; k--) {
-        if (row[k] !== '.' && !FACE.has(row[k])) { rep = row[k]; break; }
-      }
-      if (rep === '.') for (let k = x + 1; k < w; k++) {
-        if (row[k] !== '.' && !FACE.has(row[k])) { rep = row[k]; break; }
-      }
-      a[x] = rep;
-    }
-    return a.join('');
-  });
-}
-
-function buildSprite(key, tint, frame, mode) {
-  const def = SPRITE_DEFS[key];
-  const w = defW(def), h = defH(def);
-  let rows = def.rows;
-  if (frame === 1) rows = steppedRows(rows, 'L', w, h);
-  else if (frame === 2) rows = steppedRows(rows, 'R', w, h);
-  if (mode === 'back') rows = backRows(rows, w, def.faceChars);
-
-  // 塗りの有無マップ
-  const filled = (x, y) => x >= 0 && y >= 0 && x < w && y < h && rows[y][x] !== '.';
-
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d');
-
-  // 1) 自動アウトライン（塗りの周囲1pxを濃色で囲う）
-  if (def.outline) {
-    ctx.fillStyle = def.outlineColor || OUTLINE;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        if (filled(x, y)) continue;
-        // 8近傍に塗りがあれば輪郭
-        let near = false;
-        for (let dy = -1; dy <= 1 && !near; dy++)
-          for (let dx = -1; dx <= 1; dx++)
-            if ((dx || dy) && filled(x + dx, y + dy)) { near = true; break; }
-        if (near) ctx.fillRect(x, y, 1, 1);
-      }
-    }
+// 暗くしたタイル（壁の上面・通路用）
+const darkCache = new Map();
+function getDarkened(key, amount) {
+  const ck = `${key}:${amount}`;
+  let c = darkCache.get(ck);
+  if (!c) {
+    c = newCanvas();
+    const ctx = c.getContext('2d');
+    blit(ctx, key);
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.fillStyle = `rgba(4,4,12,${amount})`;
+    ctx.fillRect(0, 0, TS, TS);
+    darkCache.set(ck, c);
   }
+  return c;
+}
 
-  // 2) 本体の塗り
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const ch = rows[y][x];
-      if (ch === '.') continue;
-      let color = def.palette[ch];
-      if (color === 'TINT') color = tint || '#c0c0c0';
-      else if (color === 'TINT_DARK') color = darken(tint || '#c0c0c0');
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y, 1, 1);
-    }
+// ---- 主人公：素体＋装備中の武器・盾＋髪を重ねて描く ----
+const heroCache = new Map();
+export function getHeroSprite(player) {
+  const w = player.weapon ? player.weapon.doll : '';
+  const s = player.shield ? player.shield.doll : '';
+  const key = `${w}|${s}`;
+  let c = heroCache.get(key);
+  if (!c) {
+    c = newCanvas();
+    const ctx = c.getContext('2d');
+    blit(ctx, 'hero_base');
+    if (w) blit(ctx, w);
+    if (s) blit(ctx, s);
+    blit(ctx, 'hero_hair');
+    heroCache.set(key, c);
   }
-  return canvas;
+  return c;
 }
 
-// frame: 0=待機, 1=歩行A(左足上げ), 2=歩行B(右足上げ)
-// mode: null=通常, 'back'=背面（顔を消す）
-export function getSprite(key, tint = null, frame = 0, mode = null) {
-  const cacheKey = `${key}:${tint || ''}:${frame}:${mode || ''}`;
-  if (!spriteCache.has(cacheKey)) spriteCache.set(cacheKey, buildSprite(key, tint, frame, mode));
-  return spriteCache.get(cacheKey);
+// ---- アイテム ----
+// 未識別になりうるアイテムは「見た目」タイル。識別済みなら右下に小アイコンを重ねる
+function itemBaseKey(item) {
+  if (item.sprite) return item.sprite;
+  const look = lookOf(item);
+  if (look) return `${item.type}_${look}`;
+  return 'gold_01';
 }
 
-// そのキーのスプライト定義が存在するか（向き別スプライトのフォールバック判定に使う）
-export function spriteExists(key) {
-  return key in SPRITE_DEFS;
-}
-
-// アイテム→スプライト（種別ごとのアイコンを装備色で着色）
-import { ITEM_TYPE } from './data.js';
-
+const itemCache = new Map();
 export function getItemSprite(item) {
-  switch (item.type) {
-    case ITEM_TYPE.WEAPON: return getSprite('bat', item.color);
-    case ITEM_TYPE.SHIELD: return getSprite('hat', item.color);
-    case ITEM_TYPE.HERB:   return getSprite('medicine', item.color);
-    case ITEM_TYPE.SCROLL: return getSprite('memo', item.color);
-    case ITEM_TYPE.FOOD:   return getSprite(item.id === 'pizza' ? 'pizza' : 'burger');
-    case ITEM_TYPE.STAFF:  return getSprite('stick', item.color);
-    default: return getSprite('coin');
+  const base = itemBaseKey(item);
+  const icon = item.icon && isKnown(item) ? item.icon : '';
+  const key = `${base}|${icon}`;
+  let c = itemCache.get(key);
+  if (!c) {
+    c = newCanvas();
+    const ctx = c.getContext('2d');
+    blit(ctx, base);
+    if (icon) {
+      // アイコンは右下に小さく（元の絵がつぶれないように）
+      const tmp = getSprite(icon);
+      ctx.drawImage(tmp, 0, 0, TS, TS, TS * 0.42, TS * 0.42, TS * 0.62, TS * 0.62);
+    }
+    itemCache.set(key, c);
   }
+  return c;
+}
+
+export function getGoldSprite(amount) {
+  const key = amount >= 400 ? 'gold_16' : amount >= 150 ? 'gold_10' : amount >= 60 ? 'gold_06' : amount >= 25 ? 'gold_03' : 'gold_01';
+  return getSprite(key);
 }
 
 const urlCache = new Map();
+function toURL(key, canvas) {
+  let u = urlCache.get(key);
+  if (!u) {
+    u = canvas.toDataURL();
+    urlCache.set(key, u);
+  }
+  return u;
+}
+
 export function getItemSpriteURL(item) {
-  const key = `${item.type}:${item.id}:${item.color}`;
-  if (!urlCache.has(key)) urlCache.set(key, getItemSprite(item).toDataURL());
-  return urlCache.get(key);
+  const key = `item:${itemBaseKey(item)}|${item.icon && isKnown(item) ? item.icon : ''}`;
+  return toURL(key, getItemSprite(item));
+}
+
+export function getSpriteURL(key) {
+  return toURL(`spr:${key}`, getSprite(key));
+}
+
+export function getHeroSpriteURL(player) {
+  const key = `hero:${player.weapon ? player.weapon.doll : ''}|${player.shield ? player.shield.doll : ''}`;
+  return toURL(key, getHeroSprite(player));
 }
 
 // =============================================================
-// タイルテクスチャ（フロア深度でパレットが変わる：洞窟→青→サイケ）
-//   各タイルは4バリアント。テーマごとに床の装飾（小石・キノコ・
-//   水晶・ネオン花など）と、壁にかかる松明スプライトも生成する。
+// タイル（エリアごとに床・壁が変わる）
 // =============================================================
 export const TILE_THEMES = [
-  { // 1〜4F: 茶色の洞窟
-    floor: '#b08858', floorDark: '#9c7848', corridor: '#8a6840', corridorDark: '#7a5c38',
-    wallTop: '#6a4a30', wallFace: '#54382a', wallHi: '#8a644040', wallEdge: '#86603e', crack: '#442c20',
-    mote: ['rgba(235,205,150,', 'rgba(210,180,130,'],   // 環境パーティクル色
-    glow: 'rgba(255,176,88,',                           // 松明の暖色グロー
+  { // 1〜3F: いにしえの石回廊（あたたかい松明の色）
+    mote: ['rgba(235,205,150,', 'rgba(210,180,130,'],
+    glow: 'rgba(255,176,88,',
+    minimap: { floor: '#8a7058', floorLit: '#b8946c', corridor: '#5a4a3c', corridorLit: '#7a6450' },
   },
-  { // 5〜8F: 青い鉱窟
-    floor: '#7888a8', floorDark: '#687894', corridor: '#5c6a88', corridorDark: '#505e78',
-    wallTop: '#3c4868', wallFace: '#2e3850', wallHi: '#56648840', wallEdge: '#525f80', crack: '#242c40',
-    mote: ['rgba(160,220,255,', 'rgba(200,240,255,'],
-    glow: 'rgba(120,190,255,',
+  { // 4〜6F: 灰色の地下墓所（青白い霊気）
+    mote: ['rgba(190,210,235,', 'rgba(220,230,255,'],
+    glow: 'rgba(170,200,255,',
+    minimap: { floor: '#5c6478', floorLit: '#8490ac', corridor: '#3c4252', corridorLit: '#566078' },
   },
-  { // 9〜12F: サイケな紫
-    floor: '#9868a8', floorDark: '#885894', corridor: '#7a5088', corridorDark: '#6a4478',
-    wallTop: '#523060', wallFace: '#3e2348', wallHi: '#70459040', wallEdge: '#6a4080', crack: '#2e1838',
-    mote: ['rgba(255,130,220,', 'rgba(130,240,255,', 'rgba(200,130,255,'],
-    glow: 'rgba(255,120,220,',
+  { // 7〜9F: 苔むした遺跡（緑のきらめき）
+    mote: ['rgba(170,240,140,', 'rgba(220,255,160,'],
+    glow: 'rgba(170,255,140,',
+    minimap: { floor: '#4a6c48', floorLit: '#6c9c68', corridor: '#34483a', corridorLit: '#4c6650' },
+  },
+  { // 10〜12F: アルカナの深層（青と紫の魔力）
+    mote: ['rgba(130,220,255,', 'rgba(200,150,255,', 'rgba(150,255,240,'],
+    glow: 'rgba(120,200,255,',
+    minimap: { floor: '#3a4a88', floorLit: '#5a70c0', corridor: '#2a3460', corridorLit: '#3c4a84' },
   },
 ];
 
-export function themeForFloor(floor) {
-  return Math.min(TILE_THEMES.length - 1, Math.floor((floor - 1) / 4));
+export const TILE_VARIANTS = 4; // 床・壁のバリアント数
+
+export function getTileTexture(themeIdx, kind, variant = 0) {
+  const v = variant % TILE_VARIANTS;
+  switch (kind) {
+    case 'floor': return getSprite(`floor${themeIdx}_${v}`);
+    case 'corridor': return getDarkened(`floor${themeIdx}_${v}`, 0.28);
+    case 'wallFace': return getSprite(`wall${themeIdx}_${v}`);
+    case 'wallTop': return getDarkened(`wall${themeIdx}_${v}`, 0.62);
+  }
+  return getSprite(`floor${themeIdx}_0`);
 }
 
-const tileCache = new Map();
+// 壁の松明（点火済みの4フレーム）
+export function getTorchSprite(frame) {
+  return getSprite(`torch_${1 + (frame % 4)}`);
+}
 
 // 決定的な疑似乱数（座標→0..1）。描画側でも配置決定に使う。
 export function hash(x, y) {
@@ -963,257 +191,3 @@ export function hash(x, y) {
   return ((h ^ (h >> 16)) >>> 0) / 4294967295;
 }
 
-const TS = 32; // タイルのネイティブ解像度（キャラと同じ32pxドット）
-export const TILE_VARIANTS = 4; // 床・壁のバリアント数
-
-function buildTile(themeIdx, kind, variant = 0) {
-  const t = TILE_THEMES[themeIdx];
-  const seed = variant * 97 + 13; // バリアントごとにノイズをずらす
-  const canvas = document.createElement('canvas');
-  canvas.width = TS;
-  canvas.height = TS;
-  const ctx = canvas.getContext('2d');
-  const px = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1); };
-
-  if (kind === 'floor' || kind === 'corridor') {
-    const base = kind === 'floor' ? t.floor : t.corridor;
-    const hi = shade(base, 1.10);
-    const sp = shade(base, 0.86);
-    // ベース
-    ctx.fillStyle = base;
-    ctx.fillRect(0, 0, TS, TS);
-    // 砂利・斑点（決定的ノイズ）で質感
-    for (let y = 0; y < TS; y++) {
-      for (let x = 0; x < TS; x++) {
-        const r = hash(x * 3 + 1 + seed, y * 5 + 2 + seed);
-        if (r < 0.06) px(x, y, sp);
-        else if (r > 0.965) px(x, y, hi);
-      }
-    }
-    // 石畳の目地（32pxを4分割した16/16の格子）＋ベベル
-    ctx.fillStyle = 'rgba(0,0,0,0.16)';
-    ctx.fillRect(0, TS - 1, TS, 1);
-    ctx.fillRect(TS - 1, 0, 1, TS);
-    ctx.fillRect(0, 15, TS, 1);
-    ctx.fillRect(15, 0, 1, TS);
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    ctx.fillRect(0, 0, TS, 1);
-    ctx.fillRect(0, 0, 1, TS);
-    ctx.fillRect(0, 16, TS, 1);
-    ctx.fillRect(16, 0, 1, TS);
-    // バリアント固有のくたびれ表現
-    if (kind === 'floor') {
-      const dk = shade(base, 0.78);
-      if (variant === 1) {
-        // 斜めのひび
-        for (let i = 0; i < 9; i++) px(6 + i, 20 - ((i / 2) | 0), dk);
-        px(7, 21, dk); px(11, 19, dk);
-      } else if (variant === 2) {
-        // すり減った明るい斑
-        for (let y = 8; y < 14; y++)
-          for (let x = 18; x < 27; x++)
-            if (hash(x * 9 + seed, y * 7) < 0.5) px(x, y, hi);
-      } else if (variant === 3) {
-        // 暗い染み
-        for (let y = 20; y < 27; y++)
-          for (let x = 6; x < 14; x++)
-            if (hash(x * 5, y * 9 + seed) < 0.45) px(x, y, sp);
-      }
-    }
-
-  } else if (kind === 'wallTop') {
-    // 岩の上面：ベース＋ごつごつした斑＋上に薄いハイライト
-    const base = t.wallTop;
-    ctx.fillStyle = base;
-    ctx.fillRect(0, 0, TS, TS);
-    const d = shade(base, 0.82), l = shade(base, 1.16);
-    for (let y = 0; y < TS; y++)
-      for (let x = 0; x < TS; x++) {
-        const r = hash(x * 7 + 3 + seed, y * 11 + 5 + seed);
-        if (r < 0.12) px(x, y, d);
-        else if (r > 0.9) px(x, y, l);
-      }
-    ctx.fillStyle = 'rgba(255,255,255,0.05)';
-    ctx.fillRect(0, 0, TS, 2);
-
-  } else if (kind === 'wallFace') {
-    // 崖の壁面：レンガ状ブロック＋上端ハイライト＋下端の影
-    const base = t.wallFace;
-    const mortar = shade(base, 0.6);
-    const blkHi = shade(base, 1.14);
-    const blkLo = shade(base, 0.8);
-    ctx.fillStyle = base;
-    ctx.fillRect(0, 0, TS, TS);
-    // レンガ：高さ8、横は段ごとに半ブロックずらす
-    const bh = 8, bw = 16;
-    for (let y = 0; y < TS; y++) {
-      const rowIdx = Math.floor(y / bh);
-      const offset = ((rowIdx + variant) % 2) * (bw / 2);
-      for (let x = 0; x < TS; x++) {
-        const bx = (x + offset) % bw;
-        const localY = y % bh;
-        if (localY === 0 || bx === 0) {
-          px(x, y, mortar); // 目地
-        } else if (localY === 1) {
-          px(x, y, blkHi);  // ブロック上面のハイライト
-        } else if (localY === bh - 1) {
-          px(x, y, blkLo);  // ブロック下面の影
-        } else {
-          // 軽い斑
-          if (hash(x * 13 + 7 + seed, y * 17 + 3 + seed) < 0.08) px(x, y, blkLo);
-        }
-      }
-    }
-    // テーマ固有のきらめき（鉱窟は結晶、サイケは光る筋）
-    if (themeIdx === 1 && variant % 2 === 0) {
-      px(9, 12, '#a8d8f8'); px(10, 12, '#d8f0ff'); px(10, 13, '#a8d8f8');
-      px(22, 20, '#a8d8f8'); px(23, 21, '#d8f0ff');
-    } else if (themeIdx === 2 && variant % 2 === 1) {
-      px(7, 11, '#e878e8'); px(8, 12, '#ffa8ff');
-      px(24, 19, '#a878ff'); px(25, 20, '#d0a8ff');
-    }
-    // 崖上端のフチ（明）と最下段の濃い影
-    ctx.fillStyle = shade(base, 1.3);
-    ctx.fillRect(0, 0, TS, 2);
-    ctx.fillStyle = 'rgba(0,0,0,0.28)';
-    ctx.fillRect(0, TS - 2, TS, 2);
-  }
-  return canvas;
-}
-
-export function getTileTexture(themeIdx, kind, variant = 0) {
-  const key = `${themeIdx}:${kind}:${variant}`;
-  if (!tileCache.has(key)) tileCache.set(key, buildTile(themeIdx, kind, variant));
-  return tileCache.get(key);
-}
-
-// =============================================================
-// 床の装飾（テーマごとに4種）。透明地の32x32に小物を描く。
-// =============================================================
-export const DECO_COUNT = 4;
-const decoCache = new Map();
-
-function buildDeco(themeIdx, idx) {
-  const canvas = document.createElement('canvas');
-  canvas.width = TS;
-  canvas.height = TS;
-  const ctx = canvas.getContext('2d');
-  const px = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1); };
-  const blob = (cx, cy, r, c, hi) => { // 丸っこい小石
-    for (let y = -r; y <= r; y++)
-      for (let x = -r; x <= r; x++)
-        if (x * x + y * y <= r * r + 0.5) px(cx + x, cy + y, c);
-    if (hi) px(cx - 1, cy - 1, hi);
-  };
-
-  if (themeIdx === 0) {
-    // 洞窟：小石 / ひび / 赤キノコ / 骨
-    if (idx === 0) {
-      blob(10, 22, 2, '#8a6a48', '#c8a878'); blob(15, 25, 1, '#7a5c3c'); blob(22, 21, 2, '#96764e', '#c8a878');
-    } else if (idx === 1) {
-      const c = '#5c4028';
-      for (let i = 0; i < 10; i++) px(8 + i, 16 + ((i % 3) - 1), c);
-      px(12, 18, c); px(13, 19, c); px(18, 14, c);
-    } else if (idx === 2) {
-      // ミニキノコ
-      px(20, 18, '#e85048'); px(21, 18, '#e85048'); px(22, 18, '#e85048');
-      px(19, 19, '#e85048'); px(20, 19, '#fdeaea'); px(21, 19, '#e85048'); px(22, 19, '#e85048'); px(23, 19, '#e85048');
-      px(20, 20, '#efd9b0'); px(21, 20, '#efd9b0'); px(22, 20, '#efd9b0');
-      px(20, 21, '#c9a877'); px(21, 21, '#efd9b0'); px(22, 21, '#c9a877');
-    } else {
-      // 骨
-      const b = '#e8e0d0', s = '#b8b0a0';
-      px(9, 24, b); px(10, 24, b); px(11, 25, b); px(12, 25, b); px(13, 26, b); px(14, 26, b);
-      px(8, 23, b); px(8, 25, b); px(15, 25, s); px(15, 27, s);
-    }
-  } else if (themeIdx === 1) {
-    // 鉱窟：水晶（大）/ 板石 / 水たまり / 水晶（小）
-    if (idx === 0) {
-      const c = '#8ecdf2', hi = '#e2f6ff', dk = '#4a7ab0';
-      px(15, 14, hi); px(15, 15, c); px(14, 16, c); px(15, 16, hi); px(16, 16, c);
-      px(14, 17, c); px(15, 17, c); px(16, 17, c); px(13, 18, dk); px(14, 18, c); px(15, 18, c); px(16, 18, c); px(17, 18, dk);
-      px(19, 17, hi); px(19, 18, c); px(18, 19, c); px(19, 19, c); px(20, 19, dk);
-      px(14, 19, dk); px(15, 19, dk); px(16, 19, dk); px(18, 20, dk); px(19, 20, dk);
-    } else if (idx === 1) {
-      blob(10, 23, 2, '#5c6a84', '#9aacc4'); blob(21, 25, 2, '#66748e', '#9aacc4'); blob(16, 26, 1, '#525e76');
-    } else if (idx === 2) {
-      // 水たまり（明るいリム＋暗い水面）
-      ctx.fillStyle = '#4c5c80';
-      ctx.fillRect(11, 21, 10, 4);
-      ctx.fillRect(13, 20, 6, 6);
-      px(13, 21, '#8aa4d0'); px(14, 21, '#aac4e8'); px(18, 23, '#8aa4d0');
-    } else {
-      const c = '#8ecdf2', hi = '#e2f6ff';
-      px(22, 12, hi); px(22, 13, c); px(21, 14, c); px(22, 14, c); px(23, 14, '#4a7ab0');
-      px(9, 18, hi); px(9, 19, c); px(10, 19, '#4a7ab0');
-    }
-  } else {
-    // サイケ：ネオン花 / 光る胞子 / 紫水晶 / うずまき
-    if (idx === 0) {
-      const p = '#ff70d8', P = '#c840a8', y = '#ffe24a';
-      px(15, 16, p); px(17, 16, p); px(16, 15, p); px(16, 17, p);
-      px(16, 16, y); px(15, 15, P); px(17, 15, P); px(15, 17, P); px(17, 17, P);
-      px(16, 18, '#48a048'); px(16, 19, '#3a8a3a'); px(15, 20, '#48a048');
-    } else if (idx === 1) {
-      px(10, 14, '#7af0ff'); px(11, 15, '#c8f8ff');
-      px(21, 20, '#7af0ff'); px(22, 21, '#c8f8ff');
-      px(15, 25, '#ff8ae0'); px(16, 26, '#ffc8f0');
-    } else if (idx === 2) {
-      const c = '#b088e8', hi = '#e8d8ff', dk = '#6a4898';
-      px(18, 15, hi); px(18, 16, c); px(17, 17, c); px(18, 17, c); px(19, 17, c);
-      px(17, 18, c); px(18, 18, hi); px(19, 18, dk); px(16, 19, dk); px(17, 19, dk); px(18, 19, dk);
-    } else {
-      const c = '#7a4888';
-      px(14, 20, c); px(15, 19, c); px(16, 19, c); px(17, 20, c); px(17, 21, c);
-      px(16, 22, c); px(15, 22, c); px(14, 22, c); px(15, 21, '#c890d8');
-    }
-  }
-  return canvas;
-}
-
-export function getDecoTexture(themeIdx, idx) {
-  const key = `${themeIdx}:${idx}`;
-  if (!decoCache.has(key)) decoCache.set(key, buildDeco(themeIdx, idx));
-  return decoCache.get(key);
-}
-
-// =============================================================
-// 壁の松明（3フレームでゆらめく炎）。renderer が壁面タイルに重ねる。
-// =============================================================
-const torchCache = new Map();
-
-// 8x9の炎パターン×3フレーム（o=外炎, y=内炎, w=芯）
-const FLAME_FRAMES = [
-  ['...o....', '...oo...', '..ooyo..', '..oyyo..', '.ooyyoo.', '.oyywyo.', '.oyywyo.', '..oyyo..', '...oo...'],
-  ['....o...', '...oo...', '...oyo..', '..oyyoo.', '..oyyyo.', '.oyywyo.', '..yywy..', '..oyyo..', '...oo...'],
-  ['..o.....', '..oo.o..', '..oyoo..', '.ooyyo..', '.oyyyoo.', '.oywyyo.', '.oywyo..', '..oyy...', '...oo...'],
-];
-
-function buildTorch(frame) {
-  const canvas = document.createElement('canvas');
-  canvas.width = TS;
-  canvas.height = TS;
-  const ctx = canvas.getContext('2d');
-  const px = (x, y, c) => { ctx.fillStyle = c; ctx.fillRect(x, y, 1, 1); };
-
-  // 鉄のブラケットと柄
-  for (let y = 18; y <= 23; y++) { px(15, y, '#6a4a2a'); px(16, y, '#8a6438'); }
-  px(14, 23, '#3a3630'); px(15, 23, '#4a443c'); px(16, 23, '#4a443c'); px(17, 23, '#3a3630');
-  px(14, 24, '#2e2a24'); px(17, 24, '#2e2a24');
-  // 炎（フレームごとにゆらぐ）
-  const map = FLAME_FRAMES[frame % FLAME_FRAMES.length];
-  const colors = { o: '#ff8c28', y: '#ffd848', w: '#fff8d8' };
-  for (let y = 0; y < map.length; y++) {
-    for (let x = 0; x < map[y].length; x++) {
-      const ch = map[y][x];
-      if (ch !== '.') px(12 + x, 9 + y, colors[ch]);
-    }
-  }
-  return canvas;
-}
-
-export function getTorchSprite(frame) {
-  const f = frame % FLAME_FRAMES.length;
-  if (!torchCache.has(f)) torchCache.set(f, buildTorch(f));
-  return torchCache.get(f);
-}

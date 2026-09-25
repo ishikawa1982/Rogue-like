@@ -5,7 +5,8 @@ import { Game } from './game.js';
 import { Renderer } from './renderer.js';
 import { UI } from './ui.js';
 import { audio } from './audio.js';
-import { getSprite } from './sprites.js';
+import { loadAtlas, getSpriteURL, getHeroSpriteURL } from './sprites.js';
+import { VERSION, GAME_TITLE, GAME_SUBTITLE } from './version.js';
 
 const canvas = document.getElementById('game');
 const minimap = document.getElementById('minimap');
@@ -13,6 +14,7 @@ const renderer = new Renderer(canvas, minimap);
 
 let game = new Game();
 let ui = new UI(game);
+let ready = false;   // 画像素材の読み込みが終わったか
 let started = false; // タイトル画面を抜けたか
 
 // -------------------------------------------------------------
@@ -20,44 +22,55 @@ let started = false; // タイトル画面を抜けたか
 // -------------------------------------------------------------
 function loop() {
   const now = Date.now();
-  // 期限切れエフェクトを掃除
   if (game.effects.length) {
     game.effects = game.effects.filter(e => now - e.start < e.ttl);
   }
-  // 効果音キューを消費して再生
   if (game.soundQueue.length) {
     const q = game.soundQueue.splice(0);
     for (const n of q) audio.play(n);
   }
-  renderer.render(game, now);
-  ui.update();
+  // 場面に合わせてBGMを切り替える
+  if (!started) audio.setScene('title');
+  else if (game.over) audio.setScene(null);
+  else audio.setScene(game.bgmScene());
+
+  if (ready) {
+    renderer.render(game, now);
+    ui.update();
+  }
   checkGameEnd();
   requestAnimationFrame(loop);
 }
 
 function checkGameEnd() {
   const overlay = document.getElementById('overlay');
-  if (game.over) {
-    overlay.classList.remove('hidden');
-    const title = document.getElementById('overlay-title');
-    const sub = document.getElementById('overlay-sub');
-    if (game.won) {
-      title.textContent = 'ダンジョン制覇！';
-      title.style.color = '#ffe24a';
-      sub.textContent = `${game.floor - 1}F まで踏破 / ${game.turn}ターン / ${game.player.gold}ドル`;
-    } else {
-      title.textContent = 'GAME OVER';
-      title.style.color = '#ef5350';
-      sub.textContent = `${game.floor}F で力つきた / Lv${game.player.level} / ${game.turn}ターン`;
-    }
-  } else {
+  if (!started || !game.over) {
     overlay.classList.add('hidden');
+    return;
+  }
+  if (!overlay.classList.contains('hidden')) return;
+  overlay.classList.remove('hidden');
+  const title = document.getElementById('overlay-title');
+  const sub = document.getElementById('overlay-sub');
+  const detail = document.getElementById('overlay-detail');
+  const p = game.player;
+  const time = ui.fmtTime(game.elapsed);
+  if (game.won) {
+    title.textContent = '秘宝を手に入れた！';
+    title.style.color = '#ffe24a';
+    sub.textContent = `${p.name}は ${GAME_TITLE}を 制覇した！`;
+    detail.textContent = `Lv${p.level} / ${game.turn}ターン / ${p.gold}ゴールド / ${time}`;
+  } else {
+    title.textContent = 'GAME OVER';
+    title.style.color = '#ef5350';
+    sub.textContent = `${game.floor}Fで ${game.deathCause || '力つきた'}`;
+    detail.textContent = `Lv${p.level} / ${game.turn}ターン / ${p.gold}ゴールド / ${time}`;
   }
 }
 
 // 移動キーのマッピング（テンキー・矢印・vi風・WASD）
 const MOVE_KEYS = {
-  ArrowUp:    [0, -1], ArrowDown:  [0, 1], ArrowLeft:  [-1, 0], ArrowRight: [1, 0],
+  ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
   k: [0, -1], j: [0, 1], h: [-1, 0], l: [1, 0],
   y: [-1, -1], u: [1, -1], b: [-1, 1], n: [1, 1],
   w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
@@ -65,44 +78,49 @@ const MOVE_KEYS = {
   '7': [-1, -1], '9': [1, -1], '1': [-1, 1], '3': [1, 1],
 };
 
-function restart() {
+// ゲームオーバー後はタイトルへ戻る（次のゲームを用意しておく）
+function backToTitle() {
+  started = false;
   game = new Game();
-  ui = new UI(game);
+  ui.setGame(game);
   document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('title').classList.remove('hidden');
 }
 
 // タイトル画面 → ゲーム開始
 function startGame() {
-  if (started) return;
+  audio.start(); // 最初のユーザー操作で音を有効化
+  if (started || !ready) return;
   started = true;
   document.getElementById('title').classList.add('hidden');
-  audio.start(); // 最初のユーザー操作で音を有効化
   // タイマー基準をリセット（タイトルで見ていた時間を除外）
   game.startTime = Date.now();
+  game.enteredAt = Date.now();
 }
 
 window.addEventListener('keydown', (e) => {
-  // タイトル中は開始のみ
-  if (!started) {
-    if (e.key === 'Enter' || e.key === ' ') { startGame(); e.preventDefault(); }
-    return;
-  }
-
-  // ミュート切り替え
   if (e.key === 'm' || e.key === 'M') {
+    audio.start();
     updateMuteIcon(audio.toggleMute());
     return;
   }
 
-  // ゲームオーバー中はリスタートのみ
-  if (game.over) {
-    if (e.key === 'Enter' || e.key === ' ') { restart(); e.preventDefault(); }
+  // タイトル中は開始のみ
+  if (!started) {
+    if (e.key === 'Enter' || e.key === ' ') { startGame(); e.preventDefault(); }
+    else audio.start();
     return;
   }
 
-  // 持ち物メニューが開いているとき
-  if (ui.invOpen) {
-    handleInventoryKey(e);
+  // ゲームオーバー中はタイトルへ
+  if (game.over) {
+    if (e.key === 'Enter' || e.key === ' ') { backToTitle(); e.preventDefault(); }
+    return;
+  }
+
+  // ウィンドウ（持ち物・ダイアログ）が開いているとき
+  if (ui.blocking) {
+    if (ui.handleKey(e)) e.preventDefault();
     return;
   }
 
@@ -115,33 +133,12 @@ window.addEventListener('keydown', (e) => {
     game.wait();                    // 足踏み
   } else if (key === 'Enter' || key === '>') {
     game.descend();                 // 階段を降りる
+    e.preventDefault();
   } else if (key === 'i' || key === 'Tab') {
-    ui.toggleInventory();
+    ui.openInventory();
     e.preventDefault();
   }
 });
-
-function handleInventoryKey(e) {
-  const key = e.key;
-  if (key === 'i' || key === 'Escape' || key === 'Tab') {
-    ui.closeInventory();
-    e.preventDefault();
-  } else if (key === 'ArrowUp' || key === 'k' || key === 'w') {
-    ui.moveCursor(-1);
-    e.preventDefault();
-  } else if (key === 'ArrowDown' || key === 'j' || key === 's') {
-    ui.moveCursor(1);
-    e.preventDefault();
-  } else if (key === 'Enter' || key === ' ') {
-    game.useItem(ui.invIndex);
-    if (ui.invIndex >= game.player.inventory.length) ui.invIndex = Math.max(0, game.player.inventory.length - 1);
-    e.preventDefault();
-  } else if (key === 't') {
-    game.dropItem(ui.invIndex);
-    if (ui.invIndex >= game.player.inventory.length) ui.invIndex = Math.max(0, game.player.inventory.length - 1);
-    e.preventDefault();
-  }
-}
 
 function updateMuteIcon(muted) {
   const btn = document.getElementById('btn-mute');
@@ -150,9 +147,10 @@ function updateMuteIcon(muted) {
 
 // ---- タッチ操作（スマホ向け方向パッド） ----
 function bindTouch() {
+  const canAct = () => started && !game.over && !ui.blocking;
   document.querySelectorAll('[data-dir]').forEach(btn => {
     btn.addEventListener('click', () => {
-      if (!started || game.over) return;
+      if (!canAct()) return;
       const [dx, dy] = btn.dataset.dir.split(',').map(Number);
       game.tryMove(dx, dy);
     });
@@ -161,36 +159,57 @@ function bindTouch() {
     const el = document.getElementById(id);
     if (el) el.addEventListener('click', fn);
   };
-  bind('btn-wait',  () => { if (started && !game.over) game.wait(); });
-  bind('btn-stairs',() => { if (started && !game.over) game.descend(); });
-  bind('btn-inv',   () => { if (started) ui.toggleInventory(); });
-  bind('btn-mute',  () => { audio.start(); updateMuteIcon(audio.toggleMute()); });
-  // タイトル / ゲームオーバーをタップ
-  bind('title',     () => startGame());
-  bind('overlay',   () => { if (game.over) restart(); });
+  bind('btn-wait', () => { if (canAct()) game.wait(); });
+  bind('btn-stairs', () => { if (canAct()) game.descend(); });
+  bind('btn-inv', () => { if (started && !game.over && !game.request) ui.toggleInventory(); });
+  bind('btn-mute', (e) => { e.stopPropagation(); audio.start(); updateMuteIcon(audio.toggleMute()); });
+  bind('title', () => startGame());
+  bind('overlay', () => { if (game.over) backToTitle(); });
 }
 
-// ---- タイトルの飾りスプライトを生成 ----
+// ---- タイトル画面の表示 ----
+function buildTitle() {
+  document.getElementById('title-logo').textContent = GAME_TITLE;
+  document.getElementById('title-sub').textContent = GAME_SUBTITLE;
+  document.getElementById('title-version').textContent = `Ver ${VERSION}`;
+  document.getElementById('ver-badge').textContent = `Ver ${VERSION}`;
+  document.title = `${GAME_TITLE} Ver ${VERSION} - ローグライクRPG`;
+}
+
 function buildTitleArt() {
   const art = document.getElementById('title-art');
   if (!art) return;
-  const keys = ['kinoko', 'player', 'jelly', 'alien'];
-  for (const k of keys) {
+  art.innerHTML = '';
+  const urls = [
+    getSpriteURL('mon_slime'), getSpriteURL('mon_goblin'), getHeroSpriteURL(game.player),
+    getSpriteURL('mon_skeleton'), getSpriteURL('mon_dragon'),
+  ];
+  for (const url of urls) {
     const img = new Image();
-    img.src = getSprite(k).toDataURL();
+    img.src = url;
     art.appendChild(img);
   }
 }
 
 // ---- 初期化 ----
-function init() {
+async function init() {
+  buildTitle();
   renderer.resize();
   window.addEventListener('resize', () => renderer.resize());
   bindTouch();
-  buildTitleArt();
   requestAnimationFrame(loop);
+  const startLabel = document.getElementById('title-start');
+  try {
+    await loadAtlas();
+    ready = true;
+    buildTitleArt();
+    startLabel.textContent = 'PRESS ENTER / TAP TO START';
+  } catch (err) {
+    startLabel.textContent = `エラー：${err.message}（ページを再読み込みしてください）`;
+    console.error(err);
+  }
   // デバッグ用フック
-  window.__DEBUG = { get game() { return game; }, start: startGame };
+  window.__DEBUG = { get game() { return game; }, start: startGame, get ui() { return ui; } };
 }
 
 init();

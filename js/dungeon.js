@@ -1,14 +1,16 @@
 // =============================================================
 // dungeon.js - ダンジョン自動生成
-//   グリッドを区画(グリッドルーム)に分割し、各区画に部屋を配置、
+//   グリッドを区画に分割し、各区画に部屋（または通路の分岐点）を置いて
 //   隣接区画を通路でつなぐ「グリッド分割方式」。
-//   風来のシレン系の典型的なダンジョン生成手法。
+//   区画の数はフロアごとに 3x2 / 4x2 / 3x3 / 4x3 から選ぶ。
 // =============================================================
 import { TILE } from './data.js';
-import { randInt, choice, shuffle } from './rng.js';
+import { randInt, choice, shuffle, chance } from './rng.js';
 
 export const MAP_W = 48;
 export const MAP_H = 36;
+
+const GRIDS = [[3, 2], [4, 2], [3, 3], [4, 3]];
 
 export class Dungeon {
   constructor(w = MAP_W, h = MAP_H) {
@@ -17,6 +19,8 @@ export class Dungeon {
     this.tiles = [];          // 2次元配列 [y][x]
     this.rooms = [];          // {x,y,w,h, cx,cy} 部屋情報
     this.stairs = { x: 0, y: 0 };
+    this.shopRoom = null;     // お店の部屋（game が設定）
+    this.houseRoom = null;    // モンスターハウスの部屋（game が設定）
     this.generate();
   }
 
@@ -51,34 +55,62 @@ export class Dungeon {
     return null;
   }
 
+  inRoom(room, x, y) {
+    return !!room && x >= room.x && x < room.x + room.w && y >= room.y && y < room.y + room.h;
+  }
+
   generate() {
-    // 全タイルを壁で初期化
+    // 部屋が4つ以上できるまで作り直す（お店・モンスターハウス・スタート・階段を分けるため）
+    for (let tries = 0; tries < 20; tries++) {
+      this.generateOnce();
+      if (this.rooms.length >= 4) break;
+    }
+    // 階段
+    const stairRoom = choice(this.rooms);
+    this.stairs = {
+      x: stairRoom.x + randInt(1, stairRoom.w - 2),
+      y: stairRoom.y + randInt(1, stairRoom.h - 2),
+    };
+    this.set(this.stairs.x, this.stairs.y, TILE.STAIRS);
+  }
+
+  generateOnce() {
     this.tiles = Array.from({ length: this.h }, () =>
       Array.from({ length: this.w }, () => TILE.WALL)
     );
     this.rooms = [];
 
-    // マップを cols x rows のグリッド区画に分割
-    const cols = 3;
-    const rows = 2;
+    const [cols, rows] = choice(GRIDS);
     const cellW = Math.floor(this.w / cols);
     const cellH = Math.floor(this.h / rows);
+    const total = cols * rows;
+    // 部屋を置かない区画（通路の分岐点になる）
+    const junctions = new Set();
+    const maxJunctions = Math.max(0, total - 5);
+    for (let i = 0; i < total; i++) {
+      if (junctions.size < maxJunctions && chance(0.2)) junctions.add(i);
+    }
 
-    const grid = []; // grid[ry][rx] = room
+    const grid = [];
     for (let ry = 0; ry < rows; ry++) {
       grid[ry] = [];
       for (let rx = 0; rx < cols; rx++) {
-        // 区画内に余白を持たせて部屋を作る
         const margin = 2;
-        const maxRw = cellW - margin * 2;
-        const maxRh = cellH - margin * 2;
-        const rw = randInt(5, Math.max(6, maxRw));
-        const rh = randInt(4, Math.max(5, maxRh));
         const ox = rx * cellW + margin;
         const oy = ry * cellH + margin;
+        const maxRw = cellW - margin * 2;
+        const maxRh = cellH - margin * 2;
+        if (junctions.has(ry * cols + rx)) {
+          const jx = ox + randInt(1, Math.max(1, maxRw - 2));
+          const jy = oy + randInt(1, Math.max(1, maxRh - 2));
+          this.set(jx, jy, TILE.CORRIDOR);
+          grid[ry][rx] = { cx: jx, cy: jy, junction: true };
+          continue;
+        }
+        const rw = randInt(5, Math.max(5, maxRw));
+        const rh = randInt(4, Math.max(4, maxRh));
         const rxPos = ox + randInt(0, Math.max(0, maxRw - rw));
         const ryPos = oy + randInt(0, Math.max(0, maxRh - rh));
-
         const room = {
           x: rxPos, y: ryPos, w: rw, h: rh,
           cx: rxPos + Math.floor(rw / 2),
@@ -91,25 +123,34 @@ export class Dungeon {
       }
     }
 
-    // 隣接する区画同士を通路でつなぐ（横方向）
-    for (let ry = 0; ry < rows; ry++) {
-      for (let rx = 0; rx < cols - 1; rx++) {
-        this.connectRooms(grid[ry][rx], grid[ry][rx + 1]);
+    // 全区画をつなぐ全域木（ランダムDFS）＋ときどき余分な通路でループを作る
+    const key = (x, y) => y * cols + x;
+    const visited = new Set([key(0, 0)]);
+    const stack = [[0, 0]];
+    const linked = new Set();
+    const link = (ax, ay, bx, by) => {
+      const k = [key(ax, ay), key(bx, by)].sort((a, b) => a - b).join('-');
+      if (linked.has(k)) return;
+      linked.add(k);
+      this.connectRooms(grid[ay][ax], grid[by][bx]);
+    };
+    while (stack.length) {
+      const [x, y] = stack[stack.length - 1];
+      const nexts = shuffle([[1, 0], [-1, 0], [0, 1], [0, -1]])
+        .map(([dx, dy]) => [x + dx, y + dy])
+        .filter(([nx, ny]) => nx >= 0 && ny >= 0 && nx < cols && ny < rows && !visited.has(key(nx, ny)));
+      if (!nexts.length) { stack.pop(); continue; }
+      const [nx, ny] = nexts[0];
+      visited.add(key(nx, ny));
+      link(x, y, nx, ny);
+      stack.push([nx, ny]);
+    }
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        if (x + 1 < cols && chance(0.25)) link(x, y, x + 1, y);
+        if (y + 1 < rows && chance(0.25)) link(x, y, x, y + 1);
       }
     }
-    // 縦方向の接続（各列で1つ）
-    for (let rx = 0; rx < cols; rx++) {
-      const ry = randInt(0, rows - 1);
-      if (ry + 1 < rows) this.connectRooms(grid[ry][rx], grid[ry + 1][rx]);
-    }
-
-    // 階段を最後の部屋付近に配置
-    const stairRoom = choice(this.rooms);
-    this.stairs = {
-      x: stairRoom.x + randInt(1, stairRoom.w - 2),
-      y: stairRoom.y + randInt(1, stairRoom.h - 2),
-    };
-    this.set(this.stairs.x, this.stairs.y, TILE.STAIRS);
   }
 
   carveRoom(room) {
@@ -120,7 +161,7 @@ export class Dungeon {
     }
   }
 
-  // 2部屋の中心をL字通路で接続
+  // 2点（部屋の中心 or 分岐点）をL字通路で接続
   connectRooms(a, b) {
     let x = a.cx, y = a.cy;
     const tx = b.cx, ty = b.cy;
@@ -139,16 +180,40 @@ export class Dungeon {
     }
   }
 
-  // ランダムな歩行可能タイル（部屋の床）を返す
-  randomFloor(exclude = []) {
+  // 部屋の出入口（部屋のふちのタイルで、外側が通路につながっているもの）
+  entrances(room) {
+    const list = [];
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        const edge = x === room.x || y === room.y || x === room.x + room.w - 1 || y === room.y + room.h - 1;
+        if (!edge) continue;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy;
+          if (!this.inRoom(room, nx, ny) && this.get(nx, ny) === TILE.CORRIDOR) {
+            list.push({ x, y, ox: nx, oy: ny });
+            break;
+          }
+        }
+      }
+    }
+    return list;
+  }
+
+  // ランダムな部屋の床を返す
+  //   exclude: 使えない座標の配列 / opts.rooms: 候補の部屋 / opts.avoidRooms: 除外する部屋
+  randomFloor(exclude = [], opts = {}) {
+    let rooms = opts.rooms || this.rooms;
+    if (opts.avoidRooms) rooms = rooms.filter(r => !opts.avoidRooms.includes(r));
+    if (!rooms.length) rooms = this.rooms;
     for (let tries = 0; tries < 500; tries++) {
-      const room = choice(this.rooms);
-      const x = room.x + randInt(1, room.w - 2);
-      const y = room.y + randInt(1, room.h - 2);
+      const room = choice(rooms);
+      const x = room.x + randInt(0, room.w - 1);
+      const y = room.y + randInt(0, room.h - 1);
       if (this.get(x, y) !== TILE.FLOOR) continue;
       if (exclude.some(e => e.x === x && e.y === y)) continue;
       return { x, y };
     }
-    return { x: this.rooms[0].cx, y: this.rooms[0].cy };
+    const r = rooms[0];
+    return { x: r.cx, y: r.cy };
   }
 }
